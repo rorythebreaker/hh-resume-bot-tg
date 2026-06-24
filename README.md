@@ -2,7 +2,7 @@
 
 Automated mass-application system for **hh.ru** vacancies, fully managed from a **Telegram bot**.
 
-Built on top of the [`s3rgeym/hh-applicant-tool`](https://github.com/s3rgeym/hh-applicant-tool) CLI (version pinned to **1.8.10**). Runs as three Docker containers, applies to vacancies on a cron schedule, and sends real-time Telegram notifications for every application. Supports **multiple HH accounts and multiple profiles**, each with its own search query, cover letter, region and resume.
+Built on top of the [`s3rgeym/hh-applicant-tool`](https://github.com/s3rgeym/hh-applicant-tool) CLI (version pinned to **1.8.20**). Runs as three Docker containers, applies to vacancies on a cron schedule, and sends real-time Telegram notifications for every application. Supports **multiple HH accounts and multiple profiles**, each with its own search query, cover letter, region and resume.
 
 ---
 
