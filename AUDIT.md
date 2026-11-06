@@ -2,7 +2,7 @@
 
 Date: 2026-11-06. Each original requirement below has its own row. IMPLEMENTED means code exists and the cited evidence was inspected; it does not establish live external-service behavior. LIVE CHECK REQUIRED means an authorized HH/AI account is needed. PARTIAL identifies an actual limitation.
 
-Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker build and three-service startup with a local Telegram stub. CI/release links are added after publication.
+Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker build and three-service startup with a local Telegram stub. CI passed: https://github.com/rorythebreaker/hh-resume-bot-tg/actions/runs/42242936205 . Versioned prerelease: https://github.com/rorythebreaker/hh-resume-bot-tg/releases/tag/v2.5.4-bot.1 .
 
 
 ## 1. Обновление ядра
@@ -159,8 +159,8 @@ Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker
 | 10.8 | Тесты нескольких аккаунтов. | **IMPLEMENTED.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
 | 10.9 | Тесты восстановления после ошибок. | **IMPLEMENTED.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
 | 10.10 | Проверка синтаксиса Python. | **IMPLEMENTED.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
-| 10.11 | Проверка сборки Docker. | **CI CHECK.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
-| 10.12 | Проверка запуска всех контейнеров. | **CI CHECK.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
+| 10.11 | Проверка сборки Docker. | **PASSED IN CI.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
+| 10.12 | Проверка запуска всех контейнеров. | **PASSED IN CI.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
 | 10.13 | Интеграционные проверки с HH.ru на разрешённых тестовых сценариях. | **LIVE CHECK REQUIRED.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
 | 10.14 | Проверка отсутствия секретов в релизе. | **IMPLEMENTED.** tests/test_core.py, .github/workflows/ci.yml; no live credentials used. |
 
@@ -181,18 +181,22 @@ Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker
 
 | ID | Requirement | Status and evidence |
 |---|---|---|
-| 12.1 | Опубликовать исходники в `rorythebreaker/hh-resume-bot-tg`. | **PUBLICATION / CI CHECK.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
-| 12.2 | Не ограничиваться загрузкой ZIP в репозиторий. | **PUBLICATION / CI CHECK.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
+| 12.1 | Опубликовать исходники в `rorythebreaker/hh-resume-bot-tg`. | **PUBLISHED / CI PASSED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
+| 12.2 | Не ограничиваться загрузкой ZIP в репозиторий. | **PUBLISHED / CI PASSED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.3 | Обновить README. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.4 | Подготовить инструкцию установки. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.5 | Описать миграцию со старой версии. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.6 | Описать переменные окружения. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.7 | Добавить CHANGELOG. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 | 12.8 | Настроить GitHub Actions для тестирования. | **IMPLEMENTED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
-| 12.9 | Проверить успешность CI. | **PUBLICATION / CI CHECK.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
-| 12.10 | Создать версионированный релиз. | **PUBLICATION / CI CHECK.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
-| 12.11 | Приложить готовый архив исходников. | **PUBLICATION / CI CHECK.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
+| 12.9 | Проверить успешность CI. | **PUBLISHED / CI PASSED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
+| 12.10 | Создать версионированный релиз. | **PUBLISHED / CI PASSED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
+| 12.11 | Приложить готовый архив исходников. | **PUBLISHED / CI PASSED.** README.md, INSTALL.md, MIGRATION_2_5.md, CHANGELOG.md, CI, RELEASE.md. |
 
 ## Acceptance
 
 Full compliance is not asserted. Remaining live acceptance: HH login, CAPTCHA, AI provider, one authorized controlled application, and rollback with current tokens. Partial items above require further implementation or acceptance of the documented limitation. Automated tests send no real responses or Telegram messages.
+
+## Publication evidence
+
+Source commit 74b1d2f passed all CI steps, including Python 3.12 tests, source scan, Docker build and healthy startup of all three services against a local Telegram stub. The final documentation commit is also checked by CI. The versioned prerelease includes a git-generated source ZIP; no runtime credentials or data are included. Full live HH acceptance is pending, so the release is explicitly marked prerelease.
