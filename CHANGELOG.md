@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - HTMLBubbles UI
+
+- Experimental sendWidget menus with Telegram theme colors, pagination and live state updates.
+- Existing callback/confirmation flows remain authoritative.
+- Owner/profile/message/nonce checks, bounded private state and replay protection.
+- Automatic classic fallback on unsupported servers; /classic and /bubbles controls.
+- Dedicated transport and JavaScript bridge tests; availability documented in HTMLBUBBLES.md.
+
 ## 2.5.4-bot.1 - 2026-11-06
 
 - Python 3.12 and pinned hh-applicant-tool 2.5.4; removed Playwright dependencies.

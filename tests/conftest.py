@@ -15,3 +15,10 @@ def workspace(tmp_path, monkeypatch):
     (tmp_path/'config').mkdir()
     pid = profiles_lib.add_profile('Test', 'main', '(python OR devops)', 'letter_default.txt', resume_id='resume123')
     return tmp_path, pid
+
+@pytest.fixture(autouse=True)
+def classic_transport_for_business_tests(monkeypatch):
+    import tg_bot
+    from html_bubbles import HtmlBubbles
+    monkeypatch.setattr(tg_bot, 'HTML_BUBBLES', HtmlBubbles(lambda *a, **k: None, mode='off'))
+    monkeypatch.setattr(tg_bot, '_CLASSIC_CHATS', set())

@@ -11,6 +11,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/widget_client.test.cjs
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q .
       - run: pytest -q
@@ -30,6 +34,7 @@ jobs:
           printf 'networks:\n  default:\n    external: true\n    name: hh-ci\n' > compose.ci.yml
           docker compose -f docker-compose.yml -f compose.ci.yml up -d --wait --wait-timeout 90
           docker compose ps
+          docker exec hh-telegram-stub python -c "import json,urllib.request; s=json.load(urllib.request.urlopen('http://localhost:8765/status')); assert all(s.get(m,0)>0 for m in ('sendWidget','editMessageWidgetData','answerWidgetQuery')),s; print('HTMLBubbles round trip passed')"
           docker compose stop -t 20
       - name: Logs on failure
         if: failure()

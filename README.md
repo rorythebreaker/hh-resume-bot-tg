@@ -73,3 +73,7 @@ CI tests Python 3.12, shell syntax, Docker build and all three services against 
 [Requirements audit](AUDIT.md) lists every requirement with evidence and limitations. See [installation](INSTALL.md), [migration and rollback](MIGRATION_2_5.md), and [changelog](CHANGELOG.md).
 
 Upstream: [hh-applicant-tool](https://github.com/s3rgeym/hh-applicant-tool), a separate dependency under its own license. Upstream sources are not copied here.
+
+## HTMLBubbles menus
+
+Experimental HTMLBubbles support is enabled in auto mode: native HTML/CSS/JS menu cards when the configured Bot API supports sendWidget, otherwise standard inline menus. Use /classic for the old interface or /bubbles to retry widgets. Client version 13.2 alone is insufficient: server support is also required. See [availability, settings and limits](HTMLBUBBLES.md).

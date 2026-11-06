@@ -36,6 +36,7 @@ from hh_compat import read_access_token, token_path, read_profile_config, profil
 from security import redact
 import hh_api
 import manual_flow
+from html_bubbles import HtmlBubbles
 
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
 # Во VK-режиме токен Telegram не нужен: адресат берётся из VK_PEER_ID.
@@ -58,7 +59,7 @@ AUTH_STATUS = CONFIG_DIR / ".auth_status"
 AUTH_CANCEL = CONFIG_DIR / ".auth_cancel"
 AUTH_CAPTCHA = CONFIG_DIR / ".auth_captcha.png"
 
-API = os.environ.get("TG_API_ROOT", "https://api.telegram.org").rstrip("/") + f"/bot{TG_TOKEN}"
+API = os.environ.get("TG_API_ROOT", "https://api.telegram.org").rstrip("/") + f"/bot{TG_TOKEN}" + ("/test" if os.environ.get("TG_API_TEST_ENV") == "1" else "")
 
 # Контейнер запущен с TZ=Europe/Moscow (см. docker-compose.yml),
 # поэтому datetime.now() уже даёт московское время.
@@ -143,6 +144,18 @@ def api_call(method, **params):
     req = urllib.request.Request(url, data=data)
     with urllib.request.urlopen(req, timeout=70) as r:
         return json.loads(r.read())
+
+
+# Probe the configured Bot API only; never switch servers automatically.
+HTML_BUBBLES = HtmlBubbles(lambda method, **params: api_call(method, **params),
+                          mode=os.environ.get('TG_HTML_BUBBLES', 'auto').strip().lower())
+_CLASSIC_CHATS = set()
+
+def handle_widget_query(query):
+    HTML_BUBBLES.handle_query(
+        query, TG_CHAT, profiles_lib.get_active_profile()[0],
+        dispatch=handle_callback,
+        refresh=lambda chat_id, message_id: send_menu(chat_id, build_menu_main(), edit_message_id=message_id))
 
 
 def send(chat_id, text, parse_mode="HTML"):
@@ -2612,7 +2625,7 @@ def _fit_rows(rows):
 
 _CURRENT_MENU = {}
 
-def send_menu(chat_id, menu, edit_message_id=None):
+def send_menu(chat_id, menu, edit_message_id=None, force_classic=False):
     """Шлёт (или редактирует на месте) сообщение с инлайн-меню."""
     if not menu:
         return
@@ -2643,6 +2656,13 @@ def send_menu(chat_id, menu, edit_message_id=None):
             for row in _fit_rows(menu["rows"])
         ]
     }
+    if not force_classic and str(chat_id) not in _CLASSIC_CHATS:
+        if HTML_BUBBLES.try_menu(chat_id, menu["title"], keyboard,
+                                 profiles_lib.get_active_profile()[0], edit_message_id):
+            return
+    # Immutable widget HTML cannot become text through editMessageText.
+    if HTML_BUBBLES.owns(chat_id, edit_message_id):
+        edit_message_id = None
     params = {
         "chat_id": chat_id,
         "text": menu["title"],
@@ -2905,6 +2925,18 @@ def handle_message(chat_id, text, user_msg_id):
         handle_auth_input(t)
         return
 
+    if t in ('/classic', '/bubbles'):
+        PENDING['action'] = None
+        PENDING['data'] = None
+        if t == '/classic':
+            _CLASSIC_CHATS.add(str(chat_id))
+            HTML_BUBBLES.active.pop(str(chat_id), None)
+        else:
+            _CLASSIC_CHATS.discard(str(chat_id))
+            HTML_BUBBLES.supported = None
+        send_menu(chat_id, build_menu_main(), force_classic=t == '/classic')
+        return
+
     # /cancel — отмена текущего ожидания ввода
     if t == "/cancel":
         send(chat_id, cmd_cancel())
@@ -3074,12 +3106,16 @@ def main():
     offset = None
     while True:
         try:
-            params = {"timeout": 50, "allowed_updates": json.dumps(["message", "callback_query"])}
+            params = {"timeout": 50, "allowed_updates": json.dumps(["message", "callback_query"] + (["widget_query"] if HTML_BUBBLES.wants_updates else []))}
             if offset is not None:
                 params["offset"] = offset
             resp = api_call("getUpdates", **params)
             for upd in resp.get("result", []):
                 offset = upd["update_id"] + 1
+
+                if upd.get('widget_query'):
+                    handle_widget_query(upd['widget_query'])
+                    continue
 
                 cb = upd.get("callback_query")
                 if cb:
