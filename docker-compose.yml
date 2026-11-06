@@ -1,0 +1,47 @@
+x-environment: &environment
+  TZ: ${TZ:-Europe/Moscow}
+  CONFIG_DIR: /app/config
+  APP_DIR: /app
+  TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
+  TG_CHAT_ID: ${TG_CHAT_ID:-}
+  TG_API_ROOT: ${TG_API_ROOT:-https://api.telegram.org}
+  TG_INTERACTIVE_BUTTONS: ${TG_INTERACTIVE_BUTTONS:-0}
+  BACKUP_PASSWORD: ${BACKUP_PASSWORD:-}
+x-common: &common
+  image: hh-resume-bot-tg:2.5.4
+  restart: unless-stopped
+  environment: *environment
+  volumes:
+    - .:/app
+  stop_grace_period: 20s
+services:
+  hh_applicant_tool:
+    <<: *common
+    build: .
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "auth_helper.py"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+  hh_tg_bot:
+    <<: *common
+    user: "1000:1000"
+    command: ["python3", "/app/tg_bot.py"]
+    depends_on:
+      hh_applicant_tool:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "tg_bot.py"]
+      interval: 15s
+      timeout: 5s
+  hh_tg_watcher:
+    <<: *common
+    user: "1000:1000"
+    command: ["python3", "/app/tg_watcher.py"]
+    depends_on:
+      hh_applicant_tool:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "tg_watcher.py"]
+      interval: 15s
+      timeout: 5s

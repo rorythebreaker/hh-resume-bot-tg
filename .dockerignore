@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+config
+profiles.json
+letters/letter_profile*
+*.zip
+*.tar.gz
+*.enc
+__pycache__
+.pytest_cache
+.audit-runtime
+hh_resume_bot_2.5.4_corrected

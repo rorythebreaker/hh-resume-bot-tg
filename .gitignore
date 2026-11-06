@@ -1,0 +1,36 @@
+# Секреты
+.env
+*.env.local
+
+# Локальные данные и токены
+config/
+!config/.gitkeep
+
+# Логи, временные файлы
+*.log
+*.tmp
+*.bak
+*.pyc
+__pycache__/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Пользовательская конфигурация профилей (не перезаписывать при обновлении)
+profiles.json
+
+.venv/
+.pytest_cache/
+*.zip
+*.tar.gz
+*.enc
+.audit-runtime/
+hh_resume_bot_2.5.4_corrected/
+*.lock
+
+letters/*
+!letters/letter_default.txt

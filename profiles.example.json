@@ -1,0 +1,23 @@
+{
+  "active": "profile_1",
+  "profiles": {
+    "profile_1": {
+      "display_name": "Основной",
+      "hh_account": "main",
+      "search": "(devops OR sre OR \"системный администратор\" OR \"сетевой инженер\") NOT helpdesk",
+      "letter": "letter_default.txt",
+      "area": 113,
+      "excluded_filter": "1с,продажи,helpdesk,стажер",
+      "resume_id": "",
+      "ai": {
+        "enabled": false,
+        "filter": "",
+        "filter_prompt": "",
+        "system_prompt": "",
+        "message_prompt": "",
+        "rate_limit": 40,
+        "dry_run": false
+      }
+    }
+  }
+}

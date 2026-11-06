@@ -1,0 +1,25 @@
+# shellcheck disable=all
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+SHELL=/bin/bash
+CONFIG_DIR=/app/config
+APP_DIR=/app
+
+# При старте контейнера
+@reboot /bin/bash /app/startup.sh >> /var/log/cron.log 2>&1
+
+# Подъём резюме раз в 4 часа (рандомная задержка 1-5 минут)
+0 */4 * * * /bin/bash -c 'sleep $((60 + RANDOM \% 241))' && python3 /app/cron_job.py /bin/bash /app/hh-run-all.sh update-resumes >> /var/log/cron.log 2>&1
+
+# Рассылка откликов с 8 до 21 каждый час (с уведомлением в TG)
+0 * * * * /bin/bash -c 'sleep $((60 + RANDOM \% 241))' && APPLY_SCHEDULED=1 python3 /app/cron_job.py /bin/bash /app/apply_with_notify.sh >> /var/log/cron.log 2>&1
+
+
+# Очистка отказов раз в сутки в 03:00
+0 3 * * * /bin/bash -c 'sleep $((60 + RANDOM \% 241))' && python3 /app/cron_job.py /bin/bash /app/hh-run-all.sh clear-negotiations --blacklist-discard >> /var/log/cron.log 2>&1
+
+# Ротация лога утилиты — если больше 5 МБ, оставить последние 5 МБ
+30 3 * * * F=/app/config/log.txt; [ -f "$F" ] && [ $(stat -c%s "$F") -gt 5242880 ] && tail -c 5000000 "$F" > "$F.tmp" && mv "$F.tmp" "$F" >> /var/log/cron.log 2>&1
+
+# Бэкап конфигурации и профилей в Telegram — раз в сутки в 04:00
+# Backups are requested explicitly from the bot; no automatic credential uploads.
+0 * * * * python3 /app/cron_job.py /bin/bash /app/hh-run-all.sh whoami >> /var/log/cron.log 2>&1

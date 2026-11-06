@@ -1,0 +1,2 @@
+hh-applicant-tool==2.5.4
+tomli-w==1.2.0
