@@ -74,6 +74,10 @@ def run_pass(args):
             if found: METRICS['found'] = max(METRICS['found'], int(found.group(1)))
             if re.search(r"Пропуска[ею]|попала под фильтр|отклонена AI", line): METRICS['skipped'] += 1
             if re.search(r"\[E\]| - ERROR - ", line): METRICS['errors'] += 1
+            if line.startswith('CORE_METRICS: '):
+                counts = json.loads(line.split(': ', 1)[1])
+                for key in METRICS: METRICS[key] = counts[key]
+                sent = counts['sent']
             if POST_OK_RE.search(line):
                 sent += 1
             if LIMIT_RE.search(line):

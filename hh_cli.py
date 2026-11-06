@@ -7,9 +7,48 @@ import sys
 from functools import cached_property
 from pathlib import Path
 from hh_applicant_tool.tool import HHApplicantTool
+from hh_applicant_tool.operations.apply_vacancies import Operation as ApplyOperation
+from hh_applicant_tool.api.errors import LimitExceeded, Redirect
 from security import SecretFilter
 
+class ObservedApplyOperation(ApplyOperation):
+    """Count upstream decisions, without duplicating its application logic."""
+    def run(self, tool, args):
+        self.metrics = {'found': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+        try:
+            return super().run(tool, args)
+        finally:
+            print('CORE_METRICS: ' + json.dumps(self.metrics), flush=True)
+
+    def _get_vacancies(self, resume_id):
+        for vacancy in super()._get_vacancies(resume_id):
+            self.metrics['found'] += 1
+            yield vacancy
+
+    def _process_vacancy(self, vacancy, resume, placeholders, seen_employers, state):
+        before = state.applied_count
+        try:
+            result = super()._process_vacancy(vacancy, resume, placeholders, seen_employers, state)
+        except (LimitExceeded, Redirect):
+            self.metrics['skipped'] += 1
+            raise
+        except Exception:
+            if state.applied_count == before:
+                self.metrics['errors'] += 1
+            raise
+        else:
+            if state.applied_count == before:
+                self.metrics['skipped'] += 1
+            return result
+        finally:
+            self.metrics['sent'] += state.applied_count - before
+
 class BotTool(HHApplicantTool):
+    def _assign_args(self, args):
+        super()._assign_args(args)
+        if isinstance(getattr(args.operation_run, '__self__', None), ApplyOperation):
+            self.operation_run = ObservedApplyOperation().run
+
     @cached_property
     def config(self):
         cfg = super().config
