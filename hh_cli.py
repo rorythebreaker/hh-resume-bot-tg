@@ -21,7 +21,7 @@ class ObservedApplyOperation(ApplyOperation):
             print('CORE_METRICS: ' + json.dumps(self.metrics), flush=True)
 
     def _get_vacancies(self, resume_id):
-        for vacancy in super()._get_vacancies(resume_id):
+        for vacancy in super()._get_vacancies(resume_id=resume_id):
             self.metrics['found'] += 1
             yield vacancy
 

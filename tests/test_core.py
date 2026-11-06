@@ -254,7 +254,11 @@ def test_upstream_automatic_application_with_fake_api(tmp_path, monkeypatch):
     monkeypatch.setattr(tool,'get_me',lambda:{})
     monkeypatch.setattr(tool,'get_resume_placeholders',lambda rid:{})
     monkeypatch.setattr(Operation,'_get_vacancies',lambda self,**kwargs:iter(vacancies))
-    Operation().run(tool,args)
+    from hh_cli import ObservedApplyOperation
+    operation = ObservedApplyOperation()
+    operation.run(tool,args)
+    assert operation.metrics['sent'] == 1
+    assert operation.metrics['errors'] == 0
     api.post.assert_called_once()
     assert api.post.call_args.args[1]['message']=='Hello Python'
     assert api.post.call_args.args[1]['resume_id']=='resume'
@@ -280,3 +284,13 @@ def test_menu_nonce_rejects_old_profile(workspace,monkeypatch):
     profiles_lib.set_active_profile(other)
     bot.handle_callback('1',1,callback)
     bot.run_command.assert_not_called()
+
+def test_observed_upstream_skip_counter(monkeypatch):
+    from hh_cli import ObservedApplyOperation
+    from hh_applicant_tool.operations.apply_vacancies import Operation
+    operation=ObservedApplyOperation()
+    operation.metrics={'found':0,'sent':0,'skipped':0,'errors':0}
+    state=SimpleNamespace(applied_count=0)
+    monkeypatch.setattr(Operation,'_process_vacancy',lambda *args:None)
+    operation._process_vacancy({}, {}, {}, set(), state)
+    assert operation.metrics['skipped']==1 and operation.metrics['sent']==0

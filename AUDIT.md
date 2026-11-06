@@ -2,7 +2,7 @@
 
 Date: 2026-11-06. Each original requirement below has its own row. IMPLEMENTED means code exists and the cited evidence was inspected; it does not establish live external-service behavior. LIVE CHECK REQUIRED means an authorized HH/AI account is needed. PARTIAL identifies an actual limitation.
 
-Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker build and three-service startup with a local Telegram stub. CI passed: https://github.com/rorythebreaker/hh-resume-bot-tg/actions/runs/42242936205 . Versioned prerelease: https://github.com/rorythebreaker/hh-resume-bot-tg/releases/tag/v2.5.4-bot.1 .
+Local validation: 47 tests passed on Python 3.13. CI targets Python 3.12, Docker build and three-service startup with a local Telegram stub. CI passed: https://github.com/rorythebreaker/hh-resume-bot-tg/actions/runs/42242936205 . Versioned prerelease: https://github.com/rorythebreaker/hh-resume-bot-tg/releases/tag/v2.5.4-bot.1 .
 
 
 ## 1. Обновление ядра
@@ -117,9 +117,9 @@ Local validation: 46 tests passed on Python 3.13. CI targets Python 3.12, Docker
 
 | ID | Requirement | Status and evidence |
 |---|---|---|
-| 8.1 | Считать количество найденных вакансий. | **PARTIAL.** found is the maximum HH search-result count, not the number of inspected cards. |
+| 8.1 | Считать количество найденных вакансий. | **IMPLEMENTED.** ObservedApplyOperation counts candidates yielded by upstream search, including candidates fetched before a limit stops processing. |
 | 8.2 | Считать успешные отклики. | **IMPLEMENTED.** run_history.py, _summary.py, tg_watcher.py; persistent history/position tests. |
-| 8.3 | Считать пропущенные вакансии. | **PARTIAL.** Skipped counter uses upstream diagnostics; silent early exclusions may not be individually counted. |
+| 8.3 | Считать пропущенные вакансии. | **IMPLEMENTED.** ObservedApplyOperation counts actual upstream decisions, including silent skips, and returns structured CORE_METRICS. |
 | 8.4 | Считать ошибки. | **IMPLEMENTED.** run_history.py, _summary.py, tg_watcher.py; persistent history/position tests. |
 | 8.5 | Показывать статистику по аккаунтам. | **IMPLEMENTED.** run_history.py, _summary.py, tg_watcher.py; persistent history/position tests. |
 | 8.6 | Показывать историю запусков. | **IMPLEMENTED.** run_history.py, _summary.py, tg_watcher.py; persistent history/position tests. |
@@ -200,3 +200,5 @@ Full compliance is not asserted. Remaining live acceptance: HH login, CAPTCHA, A
 ## Publication evidence
 
 Source commit 74b1d2f passed all CI steps, including Python 3.12 tests, source scan, Docker build and healthy startup of all three services against a local Telegram stub. The final documentation commit is also checked by CI. The versioned prerelease includes a git-generated source ZIP; no runtime credentials or data are included. Full live HH acceptance is pending, so the release is explicitly marked prerelease.
+
+Statistics refinement: candidate, sent, skipped and error counts come from an instrumented upstream subclass rather than log heuristics. Upstream source is unmodified. Sending counters include successful applications with tests.

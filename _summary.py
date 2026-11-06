@@ -111,6 +111,9 @@ errors = sum(
 )
 
 # Причина остановки и число проходов — их печатает run-apply.py в конце
+exact_errors = re.findall(r'^ERRORS: (\d+)', runner_out, re.MULTILINE)
+if exact_errors: errors = int(exact_errors[-1])
+
 STOP_REASONS = {
     "no_new_vacancies": ("🔚", "Новые подходящие вакансии закончились."),
     "daily_limit": ("🛑", "Упёрлись в суточный лимит HH (200/сутки)."),

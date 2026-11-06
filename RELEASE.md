@@ -8,7 +8,7 @@ Automated validation covers tests and CI Docker smoke checks. Real HH authorizat
 
 Prerelease: live HH/AI/CAPTCHA acceptance is pending.
 
-- 46 automated tests pass locally and on Python 3.12 in CI.
+- 47 automated tests pass locally and on Python 3.12 in CI.
 - Docker build and healthy startup of all three services passed.
 - Source credential scan passed.
 - Full audit: https://github.com/rorythebreaker/hh-resume-bot-tg/blob/main/AUDIT.md
