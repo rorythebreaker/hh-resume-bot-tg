@@ -131,3 +131,67 @@ jobs:
       - name: Log out
         if: always()
         run: docker logout ghcr.io
+
+  deploy:
+    name: Deploy to VPS
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: hh-production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Deploy published image
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          CURRENT_HEAD="$(gh api "repos/$GH_REPOSITORY/commits/main" --jq '.sha')"
+          if [[ "$CURRENT_HEAD" != "$COMMIT_SHA" ]]; then
+            echo "Skipped: main already contains a newer commit."
+            exit 0
+          fi
+
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST}"
+          : "${DEPLOY_PORT:?Missing DEPLOY_PORT}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Missing DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing DEPLOY_KNOWN_HOSTS}"
+          [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          trap 'rm -f "$RUNNER_TEMP/hh_key" "$RUNNER_TEMP/hh_hosts"' EXIT
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" |
+            tr -d '\r' > "$RUNNER_TEMP/hh_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" |
+            tr -d '\r' > "$RUNNER_TEMP/hh_hosts"
+
+          ssh -F /dev/null -T \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o UserKnownHostsFile="$RUNNER_TEMP/hh_hosts" \
+            -o HostKeyAlgorithms=ssh-ed25519 \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=40 \
+            -i "$RUNNER_TEMP/hh_key" \
+            -p "$DEPLOY_PORT" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy $COMMIT_SHA"
+
+          printf 'Deployed commit `%s`\n' "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"
