@@ -21,6 +21,10 @@ jobs:
       - run: python verify_release.py
       - name: Shell syntax
         run: for f in *.sh; do bash -n "$f"; done
+      - name: Validate production Compose
+        env:
+          HH_IMAGE: hh-resume-bot-tg:2.5.4
+        run: docker compose -f compose.production.yml config --quie
       - name: Build Docker image
         run: docker compose build
       - name: Start all three services with local Telegram substitute
