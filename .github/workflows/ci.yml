@@ -68,9 +68,66 @@ jobs:
           print('Mini App authenticated container API passed')
           PY
           docker compose stop -t 20
+      - name: Save tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save hh-resume-bot-tg:2.5.4 | gzip > "$RUNNER_TEMP/hh-image.tar.gz"
+      - name: Upload tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hh-image
+          path: ${{ runner.temp }}/hh-image.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: erro
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color
       - name: Clean up
         if: always()
         run: docker compose down --remove-orphans; docker rm -f hh-telegram-stub || true
+
+  publish:
+    name: Publish image to GHCR
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download tested image
+        uses: actions/download-artifact@v4
+        with:
+          name: hh-image
+          path: ${{ runner.temp }}/hh-image
+
+      - name: Load image
+        run: |
+          set -euo pipefail
+          gzip -dc "$RUNNER_TEMP/hh-image/hh-image.tar.gz" | docker load
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" |
+            docker login ghcr.io -u "$GH_USER" --password-stdin
+
+      - name: Publish commit image
+        env:
+          GH_REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${GH_REPOSITORY,,}"
+          docker tag hh-resume-bot-tg:2.5.4 "$IMAGE:$COMMIT_SHA"
+          docker push "$IMAGE:$COMMIT_SHA"
+          printf 'Published `%s:%s`\n' "$IMAGE" "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io
