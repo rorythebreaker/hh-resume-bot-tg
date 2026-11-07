@@ -1,0 +1,69 @@
+name: hh-resume-bot-tg
+
+x-environment: &environment
+  TZ: ${TZ:-Europe/Moscow}
+  CONFIG_DIR: /app/config
+  APP_DIR: /app
+  HH_PROFILES_FILE: /app/config/profiles.json
+  TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
+  TG_CHAT_ID: ${TG_CHAT_ID:-}
+  TG_API_ROOT: ${TG_API_ROOT:-https://api.telegram.org}
+  TG_MINI_APP_URL: ${TG_MINI_APP_URL:-}
+  TG_MINI_APP_HOST: 0.0.0.0
+  TG_MINI_APP_PORT: 8080
+  TG_HTML_BUBBLES: ${TG_HTML_BUBBLES:-auto}
+  TG_API_TEST_ENV: ${TG_API_TEST_ENV:-0}
+  TG_INTERACTIVE_BUTTONS: ${TG_INTERACTIVE_BUTTONS:-0}
+  BACKUP_PASSWORD: ${BACKUP_PASSWORD:-}
+
+x-common: &common
+  image: ${HH_IMAGE:?Set HH_IMAGE}
+  restart: unless-stopped
+  environment: *environment
+  volumes:
+    - type: bind
+      source: ${HH_DATA_DIR:-/root/projects/hh-resume-bot-tg}/config
+      target: /app/config
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${HH_DATA_DIR:-/root/projects/hh-resume-bot-tg}/letters
+      target: /app/letters
+      bind:
+        create_host_path: false
+  stop_grace_period: 20s
+
+services:
+  hh_applicant_tool:
+    <<: *common
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "auth_helper.py"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+
+  hh_tg_bot:
+    <<: *common
+    ports:
+      - "127.0.0.1:8080:8080"
+    user: "1000:1000"
+    command: ["python3", "/app/tg_bot.py"]
+    depends_on:
+      hh_applicant_tool:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "tg_bot.py"]
+      interval: 15s
+      timeout: 5s
+
+  hh_tg_watcher:
+    <<: *common
+    user: "1000:1000"
+    command: ["python3", "/app/tg_watcher.py"]
+    depends_on:
+      hh_applicant_tool:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py", "tg_watcher.py"]
+      interval: 15s
+      timeout: 5s
