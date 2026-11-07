@@ -79,7 +79,7 @@ jobs:
           path: ${{ runner.temp }}/hh-image.tar.gz
           retention-days: 1
           compression-level: 0
-          if-no-files-found: erro
+          if-no-files-found: error
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color
