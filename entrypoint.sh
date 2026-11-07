@@ -7,7 +7,7 @@ chown 1000:1000 /app /app/config /app/letters
 find /app/config /app/letters -exec chown 1000:1000 {} +
 [ ! -f /app/profiles.json ] || chown 1000:1000 /app/profiles.json
 [ ! -f /app/profiles.lock ] || chown 1000:1000 /app/profiles.lock
-python3 -c 'import os,json; from storage import atomic_write; atomic_write("/app/config/.cron_environment.json", json.dumps({k:os.environ[k] for k in ("TG_BOT_TOKEN","TG_CHAT_ID","TZ","CONFIG_DIR","APP_DIR","BACKUP_PASSWORD") if k in os.environ}))'
+python3 -c 'import os,json; from storage import atomic_write; atomic_write("/app/config/.cron_environment.json", json.dumps({k:os.environ[k] for k in ("TG_BOT_TOKEN","TG_CHAT_ID","TZ","CONFIG_DIR","APP_DIR","BACKUP_PASSWORD","HH_PROFILES_FILE") if k in os.environ}))'
 chown 1000:1000 /app/config/.cron_environment.json
 touch /var/log/cron.log
 chown 1000:1000 /var/log/cron.log
