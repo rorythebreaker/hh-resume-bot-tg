@@ -17,6 +17,7 @@ Official contracts used:
 
 TG_HTML_BUBBLES=auto is the default. A new menu tries sendWidget on the configured Telegram server; HTTP 400/404 falls back to existing inline menus and disables further probes until restart or /bubbles. It never switches API servers automatically.
 
+- /ui_status reports the actual last widget method and sanitized API result, enabled/disabled mode and classic chat preference. It makes no API requests. Run /bubbles first to probe, then /ui_status. HTTP 404 means the method or configured route was not found; HTTP 400 alone is inconclusive, so inspect its description.
 - /menu opens the current menu.
 - /classic selects the standard interface for this chat until restart or /bubbles.
 - /bubbles retries widget support and opens a new menu.

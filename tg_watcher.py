@@ -285,6 +285,9 @@ def notify_auth_required(hh_account, state):
             [{"text": "🔑 Авторизовать", "callback_data": "cmd:/auth"}]
         ]
     }
+    app_url = os.environ.get('TG_MINI_APP_URL', '').strip()
+    if app_url:
+        markup = {'inline_keyboard': [[{'text':'Открыть панель', 'web_app':{'url':app_url}}]]}
     tg_send(text, reply_markup=markup)
 
 

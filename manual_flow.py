@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 import profiles_lib
+import mini_app_context
 from storage import file_lock
 from hh_api import HHAPIError
 
@@ -49,7 +50,7 @@ def prepare(bot, chat_id, text):
             bot.send(chat_id, html.escape(str(exc)))
         except Exception:
             bot.send(chat_id, 'Не удалось подготовить отклик. Проверьте профиль и повторите.')
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     return 'Получаю сведения о вакансиях для подтверждения.'
 
 def confirm(bot, chat_id, data):
@@ -96,7 +97,7 @@ def confirm(bot, chat_id, data):
         except Exception:
             errors += 1; bot.send(chat_id, 'Не удалось завершить отклик. Проверьте настройки и историю HH.')
         bot.send(chat_id, f'Отправлено: {sent}; пропущено: {skipped}; ошибок: {errors}; не обработано: {len(vacancies)-sent-skipped-errors}.')
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
 
 def generate_letter(profile, vacancy):
     from hh_cli import BotTool

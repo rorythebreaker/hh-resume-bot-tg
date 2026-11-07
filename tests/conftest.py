@@ -22,3 +22,4 @@ def classic_transport_for_business_tests(monkeypatch):
     from html_bubbles import HtmlBubbles
     monkeypatch.setattr(tg_bot, 'HTML_BUBBLES', HtmlBubbles(lambda *a, **k: None, mode='off'))
     monkeypatch.setattr(tg_bot, '_CLASSIC_CHATS', set())
+    monkeypatch.setattr(tg_bot, 'MINI_APP_URL', '')

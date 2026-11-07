@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark"><title>HH · Панель управления</title>
+<script src="https://telegram.org/js/telegram-web-app.js?64"></script>
+<link rel="stylesheet" href="/app.css"><script type="module" src="/app.mjs"></script></head>
+<body><div class="shell">
+<header><div class="brand"><span class="brand-icon">hh</span><div><strong>Работа под контролем</strong><span>Личная панель</span></div></div><span id="status" class="status">Подключение</span></header>
+<main id="main" aria-live="polite"><div class="loading">Загружаем панель…</div></main>
+<nav id="tabs" aria-label="Разделы">
+<button data-view="main" class="selected"><span>⌂</span>Обзор</button>
+<button data-view="profile"><span>◉</span>Профиль</button>
+<button data-view="filters"><span>☷</span>Фильтры</button>
+<button data-view="ai"><span>✧</span>AI</button>
+<button data-view="ctl"><span>⚙</span>Управление</button>
+</nav></div><div id="toast" role="status"></div></body></html>

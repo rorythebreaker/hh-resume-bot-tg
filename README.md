@@ -77,3 +77,7 @@ Upstream: [hh-applicant-tool](https://github.com/s3rgeym/hh-applicant-tool), a s
 ## HTMLBubbles menus
 
 Experimental HTMLBubbles support is enabled in auto mode: native HTML/CSS/JS menu cards when the configured Bot API supports sendWidget, otherwise standard inline menus. Use /classic for the old interface or /bubbles to retry widgets. Client version 13.2 alone is insufficient: server support is also required. See [availability, settings and limits](HTMLBUBBLES.md).
+
+## Mini App control panel
+
+Set TG_MINI_APP_URL to your own HTTPS origin to move the control buttons into a Telegram Mini App while keeping run summaries and watcher notifications in chat. The app uses the same handlers and confirmations, with Telegram-signed owner authorization. See [deployment and limits](MINI_APP.md). Without a configured HTTPS origin the existing bot UI stays enabled.

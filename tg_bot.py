@@ -37,8 +37,14 @@ from security import redact
 import hh_api
 import manual_flow
 from html_bubbles import HtmlBubbles
+import mini_app
+import mini_app_context
 
 TG_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+MINI_APP_URL = os.environ.get('TG_MINI_APP_URL', '').strip()
+if MINI_APP_URL:
+    MINI_APP_URL = mini_app.public_url(MINI_APP_URL)
+MINI_APP_RUNTIME = None
 # Во VK-режиме токен Telegram не нужен: адресат берётся из VK_PEER_ID.
 TG_CHAT = str(os.environ.get("TG_CHAT_ID") or os.environ.get("VK_PEER_ID") or "")
 
@@ -159,6 +165,7 @@ def handle_widget_query(query):
 
 
 def send(chat_id, text, parse_mode="HTML"):
+    if mini_app_context.text(text): return
     if VK:
         return VK.send_text(chat_id, text)
     text = redact(text)
@@ -173,6 +180,7 @@ def send(chat_id, text, parse_mode="HTML"):
 
 
 def send_plain(chat_id, text):
+    if mini_app_context.text(text): return
     """Без HTML/Markdown — для отображения файлов с спецсимволами."""
     if VK:
         return VK.send_text(chat_id, text)
@@ -221,6 +229,7 @@ def _tg_upload(method, field, data_bytes, chat_id, caption, filename, ctype):
 
 
 def send_captcha_image(chat_id, png_bytes, caption=""):
+    mini_app_context.captcha(png_bytes)
     if VK:
         # Картинкой, а не документом: VK показывает фото сразу в ленте чата.
         return VK.send_file(chat_id, png_bytes, "captcha.png", caption, as_photo=True)
@@ -250,6 +259,11 @@ QUICK_LABELS = {"🎛 Меню", "▶️ Старт", "⏸ Пауза", "▶️ 
 
 def set_panel(chat_id, text):
     """Ставит/обновляет нижнюю reply-панель."""
+    if mini_app_context.current():
+        mini_app_context.text(text)
+        return
+    if MINI_APP_URL and not VK:
+        return open_mini_app(chat_id, text)
     if VK:
         return VK.set_panel(chat_id, text, quick_panel())
     try:
@@ -268,6 +282,7 @@ def set_panel(chat_id, text):
 
 def tg_delete(chat_id, msg_id):
     """Удаляет сообщение (нажатие нижней кнопки). Ошибки игнорируем."""
+    if mini_app_context.current(): return
     if not msg_id:
         return
     if VK:
@@ -517,7 +532,7 @@ def _cmd_run_confirmed(chat_id):
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка запуска: {html.escape(str(e))}")
 
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     note = ("\n⏸ Расписание остаётся на паузе — запуск разовый."
             if paused else "")
     return f"✅ Запущено в фоне. Сводка придёт по завершении.{note}"
@@ -981,7 +996,7 @@ def cmd_auth_start():
         return f"⚠️ Не удалось запустить: {html.escape(str(e))}"
 
     # Запускаем поток-наблюдатель за выводом утилиты
-    threading.Thread(target=_auth_watcher, args=(TG_CHAT, auth_started_ts), daemon=True).start()
+    mini_app_context.make_thread(target=_auth_watcher, args=(TG_CHAT, auth_started_ts), daemon=True).start()
 
     return (
         f"🔄 Запускаю авторизацию для аккаунта <code>{html.escape(hh_account)}</code>...\n\n"
@@ -1397,7 +1412,7 @@ def cmd_reply_employers(chat_id):
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка: {html.escape(str(e))}")
 
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     mode = " (тестовый прогон)" if ai["dry_run"] else ""
     return f"🚀 Отвечаю работодателям{mode}: {mode_note}. Результат пришлю по завершении."
 
@@ -1430,7 +1445,7 @@ def cmd_cleanup(chat_id):
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка: {html.escape(str(e))}")
 
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     return "🚀 Запущено в фоне. Результат пришлёт по завершении."
 
 
@@ -2462,7 +2477,7 @@ def cmd_clear_skipped(chat_id):
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка: {html.escape(str(e))}")
 
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     return "🚀 Чищу список пропущенных вакансий."
 
 
@@ -2478,7 +2493,7 @@ def cmd_backup(chat_id):
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка бэкапа: {html.escape(str(e))}")
 
-    threading.Thread(target=runner, daemon=True).start()
+    mini_app_context.make_thread(target=runner, daemon=True).start()
     return "💾 Собираю бэкап, файл придёт следующим сообщением."
 
 
@@ -2625,8 +2640,23 @@ def _fit_rows(rows):
 
 _CURRENT_MENU = {}
 
+def open_mini_app(chat_id, text='Панель управления доступна в приложении.'):
+    return api_call('sendMessage', chat_id=chat_id, text=text, parse_mode='HTML',
+                    reply_markup=json.dumps({'inline_keyboard': [[{
+                        'text':'Открыть панель', 'web_app':{'url':MINI_APP_URL}}]]}))
+
+def configure_mini_app_menu():
+    if not MINI_APP_URL: return
+    api_call('setChatMenuButton', chat_id=TG_CHAT, menu_button=json.dumps({
+        'type':'web_app', 'text':'Панель', 'web_app':{'url':MINI_APP_URL}}))
+    api_call('sendMessage', chat_id=TG_CHAT, text='Управление перенесено в приложение. Сводки и уведомления остаются здесь.',
+             reply_markup=json.dumps({'remove_keyboard':True}))
+
 def send_menu(chat_id, menu, edit_message_id=None, force_classic=False):
     """Шлёт (или редактирует на месте) сообщение с инлайн-меню."""
+    if menu and mini_app_context.menu(menu, profiles_lib.get_active_profile()[0]): return
+    if menu and MINI_APP_URL and not force_classic and not VK:
+        return open_mini_app(chat_id)
     if not menu:
         return
     if VK:
@@ -2728,6 +2758,7 @@ def run_command(chat_id, cmd):
     return fn() if fn else None
 
 
+@mini_app_context.serialized
 def handle_callback(chat_id, message_id, data):
     """Нажатие инлайн-кнопки в сообщении-меню."""
     if data.startswith('m:'):
@@ -2911,9 +2942,18 @@ def handle_callback(chat_id, message_id, data):
 
 # =================== Нижняя панель и обработка сообщений ===================
 
+@mini_app_context.serialized
 def handle_message(chat_id, text, user_msg_id):
     """Входящее текстовое сообщение: нижние кнопки, ввод текста, команды."""
     t = (text or "").strip()
+
+    if t == '/ui_status':
+        hostname = urllib.parse.urlsplit(API).hostname or 'не задан'
+        diagnostic = HTML_BUBBLES.diagnostic_text(classic=str(chat_id) in _CLASSIC_CHATS)
+        diagnostic += '\nAPI-сервер: ' + hostname
+        diagnostic += '\nТестовая среда UI: ' + ('да' if os.environ.get('TG_API_TEST_ENV') == '1' else 'нет')
+        send(chat_id, html.escape(diagnostic))
+        return
 
     # Идёт авторизация — текст уходит в утилиту (кроме /cancel)
     with AUTH_LOCK:
@@ -3093,6 +3133,11 @@ def main():
         profiles_lib.migrate_unique_letters()
     except Exception as e:
         print(f"letter migration failed: {e}", file=sys.stderr)
+
+    global MINI_APP_RUNTIME
+    if MINI_APP_URL and not VK:
+        MINI_APP_RUNTIME = mini_app.start(sys.modules[__name__])
+        configure_mini_app_menu()
 
     # Ставим нижнюю панель при старте
     try:

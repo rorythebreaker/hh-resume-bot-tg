@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - Telegram Mini App
+
+- Owner-authenticated Mini App with all existing menus, forms and confirmations.
+- Same bot handlers; background summaries and notifications continue in Telegram chat.
+- HTTPS-origin configuration, native menu button and same-process HTTP backend.
+- Signature, owner, session, form-race and single-use action tests.
+- Added /ui_status with sanitized, actual HTMLBubbles API diagnostics.
+
+
 ## Unreleased - HTMLBubbles UI
 
 - Experimental sendWidget menus with Telegram theme colors, pagination and live state updates.

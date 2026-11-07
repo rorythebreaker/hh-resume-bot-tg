@@ -6,6 +6,8 @@ No public/shared state, no forward queries, no alternative application dispatche
 import html
 import json
 import logging
+import os
+from security import redact
 import secrets
 import time
 import urllib.error
@@ -53,9 +55,63 @@ class HtmlBubbles:
             raise ValueError('TG_HTML_BUBBLES must be auto, on or off')
         self.api, self.mode, self.clock = api, mode, clock
         self.supported = None
+        self.last_result = None
         self.sessions = {}
         self.seen = {}
         self.active = {}
+
+    def _record_error(self, exc, method):
+        code = getattr(exc, 'code', None)
+        detail = getattr(exc, 'description', '')
+        if isinstance(exc, urllib.error.HTTPError):
+            try:
+                body = json.loads(exc.read(16384))
+                detail = body.get('description', '') if isinstance(body, dict) else ''
+            except (ValueError, UnicodeDecodeError, OSError):
+                detail = ''
+        detail = redact(detail)
+        token = os.environ.get('TG_BOT_TOKEN', '')
+        if token:
+            detail = detail.replace(token, '[REDACTED]')
+        kind = 'http' if code is not None else 'network'
+        if isinstance(exc, FileNotFoundError):
+            kind, detail = 'local', 'Не найден файл ui/menu_widget.html.'
+        self.last_result = {'method': method, 'code': code, 'kind': kind,
+                            'detail': detail[:500]}
+        LOG.warning('HTMLBubbles %s failed: HTTP %s (%s)', method, code, detail)
+
+    def diagnostic_text(self, classic=False):
+        lines = ['HTMLBubbles · диагностика v1', 'Режим: ' + self.mode,
+                 'Обычный интерфейс для чата: ' + ('да' if classic else 'нет')]
+        if self.mode == 'off':
+            lines.append('Функция отключена: установите TG_HTML_BUBBLES=auto и пересоздайте контейнер.')
+        result = self.last_result
+        if not result:
+            lines.append('Попытки отправки ещё не было после перезапуска. Отправьте /bubbles, затем /ui_status.')
+        elif result['kind'] == 'ok':
+            lines.append('Сервер принял ' + result['method'] + ': поддержка на этом endpoint подтверждена.')
+            lines.append('Если карточка не видна, проверьте клиент Telegram; /classic вернёт обычные кнопки.')
+        else:
+            lines.append('Последний метод: ' + result['method'])
+            if result['code'] is not None:
+                lines.append('Ответ API: HTTP ' + str(result['code']))
+            if result['detail']:
+                lines.append('Причина: ' + result['detail'])
+            if result['kind'] == 'network':
+                lines.append('Ошибка связи: определить поддержку не удалось.')
+            elif result['kind'] == 'local':
+                lines.append('Локальная ошибка установки; доступность API не проверена.')
+            elif result['code'] == 404:
+                lines.append('Метод или путь не найден на выбранном API endpoint.')
+            elif result['code'] == 400:
+                lines.append('Запрос отклонён. Сам по себе HTTP 400 не доказывает отсутствие поддержки: важна причина выше.')
+            elif result['code'] in (401, 403):
+                lines.append('Проверьте авторизацию и доступ бота: ошибка не доказывает отсутствие метода.')
+            elif result['code'] == 429:
+                lines.append('Сработал лимит Telegram. Повторите позже.')
+            if self.supported is False:
+                lines.append('Используются обычные кнопки. /bubbles повторит попытку, если режим не off.')
+        return '\n'.join(lines)
 
     @property
     def wants_updates(self):
@@ -103,6 +159,7 @@ class HtmlBubbles:
             return False
         buttons = [dict(b) for row in keyboard['inline_keyboard'] for b in row]
         session = MenuSession(secrets.token_hex(4), profile, text, buttons, self.clock()+1800)
+        method = 'editMessageWidgetData' if is_widget else 'sendWidget'
         try:
             if is_widget:
                 result = self._call('editMessageWidgetData', chat_id=chat_id, message_id=message_id,
@@ -119,6 +176,7 @@ class HtmlBubbles:
                     raise ValueError('sendWidget did not return a Message')
                 message_id = result['message_id']
         except (urllib.error.HTTPError, WidgetAPIError) as exc:
+            self._record_error(exc, method)
             code = exc.code
             if code in (400, 404):
                 self.supported = False
@@ -127,13 +185,15 @@ class HtmlBubbles:
             # Avoid a duplicate message after rate limiting or an ambiguous API error.
             LOG.warning('Widget request failed (HTTP %s); not retried', code)
             return True
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            self._record_error(exc, method)
             LOG.warning('Widget delivery outcome unknown; not retried')
             return True
         self._prune()
         self.sessions[(str(chat_id), message_id)] = session
         self.active[str(chat_id)] = session.nonce
         self.supported = True
+        self.last_result = {'kind': 'ok', 'method': method, 'code': 200, 'detail': ''}
         return True
 
     def handle_query(self, query, owner_chat, profile, dispatch, refresh):

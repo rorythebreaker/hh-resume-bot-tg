@@ -5,6 +5,9 @@ x-environment: &environment
   TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
   TG_CHAT_ID: ${TG_CHAT_ID:-}
   TG_API_ROOT: ${TG_API_ROOT:-https://api.telegram.org}
+  TG_MINI_APP_URL: ${TG_MINI_APP_URL:-}
+  TG_MINI_APP_HOST: 0.0.0.0
+  TG_MINI_APP_PORT: 8080
   TG_HTML_BUBBLES: ${TG_HTML_BUBBLES:-auto}
   TG_API_TEST_ENV: ${TG_API_TEST_ENV:-0}
   TG_INTERACTIVE_BUTTONS: ${TG_INTERACTIVE_BUTTONS:-0}
@@ -27,6 +30,8 @@ services:
       start_period: 15s
   hh_tg_bot:
     <<: *common
+    ports:
+      - "127.0.0.1:8080:8080"
     user: "1000:1000"
     command: ["python3", "/app/tg_bot.py"]
     depends_on:

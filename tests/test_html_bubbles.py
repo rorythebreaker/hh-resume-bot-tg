@@ -184,3 +184,49 @@ def test_widget_bulk_launch_still_requires_existing_confirmation(workspace,monke
     q=query(session)
     bot.handle_widget_query(q);bot.handle_widget_query(q)
     run.assert_called_once_with('123')
+
+def test_diagnostic_distinguishes_method_not_found():
+    api=Mock(side_effect=urllib.error.HTTPError('url',404,'not found',{},io.BytesIO(b'{"description":"Not Found"}')))
+    ui=HtmlBubbles(api);ui.try_menu('123','Main',menu(),'p')
+    assert 'HTTP 404' in ui.diagnostic_text()
+    assert 'Not Found' in ui.diagnostic_text()
+
+def test_diagnostic_does_not_mislabel_bad_parameters_as_missing_method():
+    api=Mock(return_value={'ok':False,'error_code':400,'description':'INPUT_MEDIA_WIDGET_HTML_INVALID'})
+    ui=HtmlBubbles(api);ui.try_menu('123','Main',menu(),'p')
+    assert 'INPUT_MEDIA_WIDGET_HTML_INVALID' in ui.diagnostic_text()
+    assert 'не доказывает' in ui.diagnostic_text()
+
+def test_diagnostic_scrubs_bot_token(monkeypatch):
+    monkeypatch.setenv('TG_BOT_TOKEN','TEST_SECRET_TOKEN')
+    api=Mock(return_value={'ok':False,'error_code':400,'description':'request failed: TEST_SECRET_TOKEN'})
+    ui=HtmlBubbles(api);ui.try_menu('123','Main',menu(),'p')
+    assert 'TEST_SECRET_TOKEN' not in ui.diagnostic_text()
+
+def test_diagnostic_success_confirms_actual_acceptance():
+    api=fake_api();ui=HtmlBubbles(api);sent(ui,api)
+    assert ui.last_result['kind']=='ok'
+    assert 'подтверждена' in ui.diagnostic_text()
+
+def test_diagnostic_unchecked_does_not_make_requests():
+    api=fake_api();ui=HtmlBubbles(api)
+    assert '/bubbles' in ui.diagnostic_text()
+    api.assert_not_called()
+
+def test_diagnostic_network_is_inconclusive():
+    api=Mock(side_effect=TimeoutError())
+    ui=HtmlBubbles(api);ui.try_menu('123','Main',menu(),'p')
+    assert ui.last_result['kind']=='network'
+    assert 'определить поддержку не удалось' in ui.diagnostic_text()
+
+def test_ui_status_does_not_leak_endpoint_token_or_enter_auth_input(workspace,monkeypatch):
+    import tg_bot as bot
+    send=Mock();auth_input=Mock()
+    monkeypatch.setattr(bot,'send',send)
+    monkeypatch.setattr(bot,'handle_auth_input',auth_input)
+    monkeypatch.setattr(bot,'API','https://api.telegram.org/botTEST_SECRET_TOKEN/test')
+    monkeypatch.setitem(bot.AUTH_DIALOG,'active',True)
+    bot.handle_message('123','/ui_status',1)
+    output=send.call_args.args[1]
+    assert 'api.telegram.org' in output and 'TEST_SECRET_TOKEN' not in output
+    auth_input.assert_not_called()

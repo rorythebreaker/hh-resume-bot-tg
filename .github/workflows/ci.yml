@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/widget_client.test.cjs
+      - run: node --test tests/widget_client.test.cjs tests/mini_app_client.test.cjs
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q .
       - run: pytest -q
@@ -35,6 +35,34 @@ jobs:
           docker compose -f docker-compose.yml -f compose.ci.yml up -d --wait --wait-timeout 90
           docker compose ps
           docker exec hh-telegram-stub python -c "import json,urllib.request; s=json.load(urllib.request.urlopen('http://localhost:8765/status')); assert all(s.get(m,0)>0 for m in ('sendWidget','editMessageWidgetData','answerWidgetQuery')),s; print('HTMLBubbles round trip passed')"
+          docker compose stop -t 20
+      - name: Mini App container API smoke
+        env:
+          TG_BOT_TOKEN: ci-dummy
+          TG_CHAT_ID: '1'
+          TG_API_ROOT: http://hh-telegram-stub:8765
+          TG_MINI_APP_URL: https://hh-ci.example.com
+        run: |
+          docker compose -f docker-compose.yml -f compose.ci.yml up -d --wait --wait-timeout 90
+          python - <<'PY'
+          import hashlib,hmac,json,time,urllib.request,urllib.error
+          from urllib.parse import urlencode
+          base='http://127.0.0.1:8080'
+          assert json.load(urllib.request.urlopen(base+'/health'))['ok']
+          try:
+              urllib.request.urlopen(base+'/api/state')
+              raise AssertionError('Unauthenticated state was accepted')
+          except urllib.error.HTTPError as exc:
+              assert exc.code==401
+          fields={'auth_date':str(int(time.time())),'user':json.dumps({'id':1},separators=(',',':'))}
+          check=chr(10).join(k+'='+v for k,v in sorted(fields.items()))
+          secret=hmac.new(b'WebAppData',b'ci-dummy',hashlib.sha256).digest()
+          fields['hash']=hmac.new(secret,check.encode(),hashlib.sha256).hexdigest()
+          req=urllib.request.Request(base+'/api/state',headers={'Authorization':'tma '+urlencode(fields)})
+          state=json.load(urllib.request.urlopen(req))
+          assert state['profile']['account']=='main' and state['menu']['rows']
+          print('Mini App authenticated container API passed')
+          PY
           docker compose stop -t 20
       - name: Logs on failure
         if: failure()
