@@ -12,7 +12,9 @@ from hh_compat import validate_account
 from pathlib import Path
 
 APP_DIR = Path(os.environ.get("APP_DIR", "/app"))
-PROFILES_FILE = APP_DIR / "profiles.json"
+PROFILES_FILE = Path(
+    os.environ.get("HH_PROFILES_FILE", str(APP_DIR / "profiles.json"))
+)
 PROFILES_EXAMPLE = APP_DIR / "profiles.example.json"
 LETTERS_DIR = APP_DIR / "letters"
 DEFAULT_LETTER = "letter_default.txt"
