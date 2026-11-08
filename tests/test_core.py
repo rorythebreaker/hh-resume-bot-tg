@@ -381,3 +381,21 @@ def test_captcha_notification_has_no_challenge_secrets(monkeypatch):
     assert data['chat_id']=='123'
     assert data['reply_markup']['inline_keyboard'][0][0]['web_app']['url']=='https://miniapp.example.com:8443'
     assert 'captchaText' not in request.data.decode()
+
+
+def test_captcha_diagnostics_keep_flags_without_secret_body(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    session=Mock()
+    session.cookies.get.return_value='xsrf-private'
+    session.request.return_value=Mock(status_code=403,headers={},json=Mock(return_value={
+        'hhcaptcha':{'isBot':True,'captchaState':'private-state','captchaKey':'private-key'},
+        'captchaText':'private-answer',
+        'errors':[{'type':'forbidden','value':'captcha_required'}]}))
+    assert not BotTool()._send_captcha('private-answer','private-key','private-state',
+        referer_url='https://hh.ru/account/captcha',backurl='hh://applicant/captchaSuccessBackUrl',session=session)
+    message=apply_captcha.status(workspace[1])['message']
+    assert 'isBot=true' in message
+    assert 'captcha_required' in message
+    assert 'private' not in message

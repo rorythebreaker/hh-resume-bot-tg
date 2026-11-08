@@ -83,6 +83,33 @@ class BotTool(HHApplicantTool):
             extra_headers=_CAPTCHA_HEADERS)
         response=session.request('POST',target,params=payload,
             headers=headers,allow_redirects=False,timeout=(10,30))
+        # Keep only diagnostic flags and documented-style error codes. Never log
+        # the raw body: it can contain challenge keys, answers and session data.
+        details=[]
+        try:
+            body=response.json()
+        except (ValueError, TypeError):
+            body=None
+        if isinstance(body,dict):
+            challenge=body.get('hhcaptcha')
+            if isinstance(challenge,dict):
+                if isinstance(challenge.get('isBot'),bool):
+                    details.append('isBot='+str(challenge['isBot']).lower())
+                if challenge.get('captchaState'):
+                    details.append('HH запросил новую проверку')
+            import re
+            codes=[]
+            for entry in body.get('errors',[]) if isinstance(body.get('errors'),list) else []:
+                if not isinstance(entry,dict):
+                    continue
+                for field in ('type','value'):
+                    value=entry.get(field)
+                    if isinstance(value,str) and re.fullmatch(r'[a-z_]{1,64}',value):
+                        codes.append(value)
+            if codes:
+                details.append('коды HH: '+', '.join(codes[:6]))
+        if not details:
+            details.append('тело '+('JSON' if isinstance(body,dict) else 'не JSON'))
         destination=response.headers.get('Location','')
         accepted=(response.status_code in (301,302,303,307,308)
                   and bool(destination)
@@ -91,7 +118,8 @@ class BotTool(HHApplicantTool):
         apply_captcha.event(profile,'accepted' if accepted else 'rejected',
             ('HH принял CAPTCHA' if accepted else 'HH не подтвердил принятие CAPTCHA')+
             '; HTTP '+str(response.status_code)+
-            '; переход '+('успешный' if accepted else 'отсутствует или неожиданный'))
+            '; переход '+('успешный' if accepted else 'отсутствует или неожиданный')+
+            '; '+ '; '.join(details))
         return accepted
 
     def _assign_args(self, args):
