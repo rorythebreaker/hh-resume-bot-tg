@@ -43,6 +43,7 @@ def request(image, profile, timeout=180):
     data={'id':challenge,'profile':profile,'expires':time.time()+timeout,
           'image':base64.b64encode(image).decode()}
     atomic_write(path,json.dumps(data))
+    event(profile,'waiting','HH запросил CAPTCHA. Введите текст с картинки.')
     try:
         while time.time()<data['expires']:
             try:
@@ -50,6 +51,7 @@ def request(image, profile, timeout=180):
                 if reply.get('id')==challenge:
                     if reply.get('text')=='__cancel__':
                         raise RuntimeError('CAPTCHA cancelled by owner')
+                    event(profile,'submitting','Ответ получен. Отправляем его в HH.')
                     return reply['text']
             except (OSError,ValueError,KeyError):
                 pass
@@ -63,3 +65,19 @@ def request(image, profile, timeout=180):
                         target.unlink()
                 except (OSError,ValueError):
                     pass
+
+
+def status(profile):
+    try:
+        value=json.loads(Path(str(location())+'.status').read_text(encoding='utf-8'))
+        if value.get('profile')==profile and time.time()-value.get('time',0)<900:
+            return value
+    except (OSError,ValueError,TypeError):
+        pass
+    return None
+
+
+def event(profile, state, message):
+    value={'profile':profile,'state':state,'message':message,'time':time.time()}
+    atomic_write(str(location())+'.status',json.dumps(value))
+    print('CAPTCHA_STATUS: '+message,flush=True)

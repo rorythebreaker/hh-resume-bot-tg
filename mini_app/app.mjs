@@ -87,6 +87,7 @@ function render(){
   button.onclick=()=>{button.disabled=true;if(demo){view=action.id;update('/api/view',{name:view});}else update('/api/action',{id:action.id});};
   actions.appendChild(button);
  }panel.appendChild(actions);main.appendChild(panel);
+ if(data.captcha_status){main.appendChild(element('div',data.captcha_status.message,'card'));}
  if(data.input){
   const form=element('form',undefined,'card');if(data.messages.length)form.appendChild(element('p',data.messages[data.messages.length-1].text,'menu-title'));form.appendChild(element('label',data.input.secret?'Введите код или секретное значение':'Введите значение','input-label'));
   if(data.captcha){const image=element('img',undefined,'captcha');image.src='data:image/png;base64,'+data.captcha;image.alt='CAPTCHA HH';form.appendChild(image);}

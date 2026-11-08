@@ -146,6 +146,7 @@ class MiniApp:
             return {'section':session.section, 'menu':{'title':plain_text(session.menu['title']),'rows':rows},
                     'profile':{'name':(profile or {}).get('display_name') or pid or 'Создайте профиль',
                                'account':(profile or {}).get('hh_account','—')},
+                    'captcha_status':apply_captcha.status(pid),
                     'paused':bot.is_paused(), 'stats':{'free':free,'today':today},
                     'messages':list(session.messages),
                     'input':{'action':action,'nonce':session.input_nonce,

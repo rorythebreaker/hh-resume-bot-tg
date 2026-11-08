@@ -47,8 +47,46 @@ class BotTool(HHApplicantTool):
     def _solve_captcha(self, image_data):
         if os.environ.get('HH_BOT_CAPTCHA_UI') == '1':
             import apply_captcha, profiles_lib
+            self._captcha_ui_count = getattr(self, '_captcha_ui_count', 0) + 1
+            if self._captcha_ui_count > 3:
+                apply_captcha.event(profiles_lib.get_active_profile()[0], 'stopped', 'Прогон остановлен после трёх CAPTCHA. Проверьте результат в логе.')
+                raise SystemExit(2)
             return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
         return super()._solve_captcha(image_data)
+
+    def _send_captcha(self, text, key, state, referer_url=None,
+                      xsrf_token=None, backurl=None, session=None):
+        if os.environ.get('HH_BOT_CAPTCHA_UI') != '1':
+            return super()._send_captcha(text, key, state, referer_url=referer_url,
+                xsrf_token=xsrf_token, backurl=backurl, session=session)
+        from urllib.parse import urljoin, urlsplit, quote
+        from hh_applicant_tool.tool import _CAPTCHA_HEADERS
+        import apply_captcha, profiles_lib
+        session = session or self.session
+        target=urljoin(referer_url or self.base_url, '/account/captcha')
+        failurl='/account/captcha?state='+quote(state)
+        if backurl:
+            failurl+='&backurl='+quote(backurl)
+        payload={'captchaText':text,'captchaKey':key,'captchaState':state,
+                 'backurl':backurl or '/','failurl':failurl}
+        parts=urlsplit(target)
+        headers=self._build_xhr_headers(
+            origin=parts.scheme+'://'+parts.netloc,
+            xsrf=xsrf_token or session.cookies.get('_xsrf'),
+            referer_url=referer_url or parts.scheme+'://'+parts.netloc+'/',
+            extra_headers=_CAPTCHA_HEADERS)
+        response=session.request('POST',target,params=payload,
+            headers=headers,allow_redirects=False,timeout=(10,30))
+        destination=response.headers.get('Location','')
+        accepted=(response.status_code in (301,302,303,307,308)
+                  and bool(destination)
+                  and urljoin(target,destination)==urljoin(target,backurl or '/'))
+        profile=profiles_lib.get_active_profile()[0]
+        apply_captcha.event(profile,'accepted' if accepted else 'rejected',
+            ('HH принял CAPTCHA' if accepted else 'HH не подтвердил принятие CAPTCHA')+
+            '; HTTP '+str(response.status_code)+
+            '; переход '+('успешный' if accepted else 'отсутствует или неожиданный'))
+        return accepted
 
     def _assign_args(self, args):
         super()._assign_args(args)

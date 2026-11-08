@@ -1462,6 +1462,13 @@ def cmd_log():
             f.seek(max(0, size - 30_000))
             tail = f.read()
         lines = tail.splitlines()[-30:]
+        import apply_captcha
+        captcha_state = apply_captcha.status(profiles_lib.get_active_profile()[0])
+        if captcha_state:
+            lines.insert(0, "CAPTCHA_STATUS: " + captcha_state["message"])
+        captcha_lines = [line for line in tail.splitlines() if line.startswith("CAPTCHA_STATUS:")]
+        if captcha_lines:
+            lines = captcha_lines[-8:] + lines
         out = "\n".join(lines)
         if len(out) > 3500:
             out = out[-3500:]

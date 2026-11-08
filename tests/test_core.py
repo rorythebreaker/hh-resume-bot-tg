@@ -320,3 +320,39 @@ def test_rate_limit_still_stops_run(workspace,monkeypatch):
     assert module.run_pass(['fake'])[2]
     assert (root/'config'/'.paused').exists()
     proc.terminate.assert_called_once()
+
+
+@pytest.mark.parametrize('code,location,accepted',[
+    (302,'hh://applicant/captchaSuccessBackUrl',True),
+    (302,'/account/captcha?state=rejected',False),
+    (403,'',False),(200,'',False)])
+def test_captcha_validates_actual_hh_redirect(workspace,monkeypatch,code,location,accepted):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    session=Mock()
+    session.cookies.get.return_value='xsrf-private'
+    session.request.return_value=Mock(status_code=code,headers={'Location':location})
+    result=BotTool()._send_captcha('private-answer','private-key','private-state',
+        referer_url='https://hh.ru/account/captcha',
+        backurl='hh://applicant/captchaSuccessBackUrl',session=session)
+    assert result is accepted
+    message=apply_captcha.status(workspace[1])
+    assert message['state']==('accepted' if accepted else 'rejected')
+    assert 'private' not in message['message']
+    sent=session.request.call_args.kwargs
+    assert sent['params']['captchaText']=='private-answer'
+    assert sent['allow_redirects'] is False
+
+
+def test_captcha_cycle_is_bounded(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    request=Mock(return_value='answer')
+    monkeypatch.setattr(apply_captcha,'request',request)
+    tool=BotTool()
+    for _ in range(3): assert tool._solve_captcha(b'image')=='answer'
+    with pytest.raises(SystemExit): tool._solve_captcha(b'image')
+    assert request.call_count==3
+    assert apply_captcha.status(workspace[1])['state']=='stopped'

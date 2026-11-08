@@ -38,7 +38,7 @@ class SecretFilter(logging.Filter):
             message = f'{status} {method} {url}' + suffix
         if 'для ключа' in message and any(k in message for k in ('api_key', 'password', 'proxy_url')):
             message = 'Configuration value saved [REDACTED]'
-        if any(k in message.lower() for k in ('cookie:', 'cookiejar', 'session headers:', 'set-cookie', 'otpcode', 'auth_code', 'password', 'client_secret', 'access_token', 'refresh_token')):
+        if any(k in message.lower() for k in ('captchatext', 'captchakey', 'captchastate', 'текст с капчи', 'cookie:', 'cookiejar', 'session headers:', 'set-cookie', 'otpcode', 'auth_code', 'password', 'client_secret', 'access_token', 'refresh_token')):
             message = '[Sensitive authentication diagnostic omitted]'
         record.msg = redact(message)
         record.args = ()
