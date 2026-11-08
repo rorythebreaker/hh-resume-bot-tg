@@ -469,3 +469,39 @@ def test_watcher_notifies_successful_manual_apply_while_schedule_paused(tmp_path
     assert (tmp_path/'.paused').exists()
     watcher.process_log('main',log,state)
     send.assert_called_once()
+
+
+def test_watcher_main_fallback_delivers_new_events_once(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(watcher,'STATE_FILE',tmp_path/'state.json')
+    monkeypatch.setattr(watcher.profiles_lib,'get_hh_accounts',lambda:['main'])
+    notify=Mock();monkeypatch.setattr(watcher,'notify_apply',notify)
+    monkeypatch.setattr(watcher,'reset_auth_alert',Mock())
+    log=tmp_path/'log.txt';log.write_text('previous history\n')
+    assert watcher.get_log_files()=={'main':log}
+    state={}
+    watcher.process_log('main',log,state)
+    notify.assert_not_called()
+    with log.open('a') as stream:
+        stream.write("201 POST https://api.hh.ru/negotiations with params: {'vacancy_id': '12345'}\n")
+    watcher.process_log('main',log,state)
+    watcher.process_log('main',log,state)
+    notify.assert_called_once_with('12345','main')
+
+
+def test_main_log_prefers_account_file_without_reading_legacy_twice(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(watcher.profiles_lib,'get_hh_accounts',lambda:['main','other'])
+    (tmp_path/'log.txt').write_text('legacy')
+    (tmp_path/'main').mkdir();account=tmp_path/'main'/'log.txt';account.write_text('account')
+    assert watcher.get_log_files()=={'main':account,'other':tmp_path/'other'/'log.txt'}
+
+
+def test_bot_reads_same_main_fallback_log(tmp_path,monkeypatch):
+    import tg_bot as bot
+    monkeypatch.setattr(bot,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(bot,'active_hh_account',lambda:'main')
+    legacy=tmp_path/'log.txt';legacy.write_text('existing')
+    assert bot.get_active_tool_log()==legacy

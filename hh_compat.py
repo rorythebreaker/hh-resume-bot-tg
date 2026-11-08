@@ -66,3 +66,14 @@ def cli_args(account, *args):
     return [sys.executable, str(Path(__file__).with_name('hh_cli.py')),
             '--config-dir', os.environ.get('CONFIG_DIR', '/app/config'),
             '--profile', account, *args]
+
+
+def tool_log_path(config_dir, account):
+    """The default main account may keep its log directly in CONFIG_DIR."""
+    validate_account(account)
+    root=Path(config_dir)
+    candidate=root/account/'log.txt'
+    legacy=root/'log.txt'
+    if account=='main' and not candidate.exists() and legacy.exists():
+        return legacy
+    return candidate

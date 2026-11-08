@@ -302,10 +302,11 @@ def get_inode(path):
 
 
 def get_log_files():
+    from hh_compat import tool_log_path
     result = {}
     accounts = profiles_lib.get_hh_accounts()
     for acc in accounts:
-        result[acc] = CONFIG_DIR / acc / "log.txt"
+        result[acc] = tool_log_path(CONFIG_DIR, acc)
     legacy = CONFIG_DIR / "log.txt"
     if legacy.exists() and not accounts:
         result["__legacy__"] = legacy
@@ -381,6 +382,8 @@ def main():
         print("TG credentials missing — exiting", file=sys.stderr)
         return 1
     print("Watcher started (multi-account)", flush=True)
+    for account,path in get_log_files().items():
+        print(f"Watching account {account}: {path}",flush=True)
     state = load_state()
     while True:
         try:

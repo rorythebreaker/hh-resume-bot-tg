@@ -412,7 +412,8 @@ def get_active_letter_path():
 
 
 def get_active_tool_log():
-    return CONFIG_DIR / active_hh_account() / "log.txt"
+    from hh_compat import tool_log_path
+    return tool_log_path(CONFIG_DIR,active_hh_account())
 
 
 # =================== Команды ===================
