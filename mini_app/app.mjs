@@ -16,6 +16,26 @@ function toast(text){
   const target=document.getElementById('toast');target.textContent=text;target.className='show';
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>target.className='',4500);
 }
+async function copyText(text){
+ try{
+  if(globalThis.navigator?.clipboard?.writeText){
+   await globalThis.navigator.clipboard.writeText(text);
+  }else{
+   throw new Error('Clipboard API unavailable');
+  }
+  toast('\u0421\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u043e');
+ }catch(error){
+  const field=element('textarea');field.value=text;
+  field.style.position='fixed';field.style.opacity='0';
+  document.body.appendChild(field);
+  try{
+   field.focus();field.select();field.setSelectionRange(0,text.length);
+   if(!document.execCommand('copy'))throw new Error('Copy failed');
+   toast('\u0421\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u043e');
+  }catch(fallbackError){toast('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c. \u0412\u044b\u0434\u0435\u043b\u0438\u0442\u0435 \u0442\u0435\u043a\u0441\u0442 \u0432\u0440\u0443\u0447\u043d\u0443\u044e.');}
+  finally{field.remove();}
+ }
+}
 function sample(name='main'){
  const sections={
  main:['Панель управления',[['Профиль и резюме','profile'],['Фильтры поиска','filters'],['Настройки AI','ai'],['Расписание','schedule'],['Запустить рассылку','ctl'],['История и статистика','view']]],
@@ -80,7 +100,12 @@ function render(){
  }
  if(data.messages.length){
   const feed=element('section',undefined,'card');const heading=element('div',undefined,'section-title');heading.appendChild(element('h2','Ответы бота'));const clear=element('button','Очистить');clear.onclick=()=>update('/api/messages/clear',{});heading.appendChild(clear);feed.appendChild(heading);
-  const list=element('div',undefined,'messages');for(const message of data.messages.slice(-8))list.appendChild(element('div',message.text,'message'));feed.appendChild(list);main.appendChild(feed);
+  const list=element('div',undefined,'messages');for(const message of data.messages.slice(-8)){
+   const item=element('div',undefined,'message');
+   const copy=element('button','\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c','copy-message');copy.type='button';
+   copy.onclick=()=>copyText(message.text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,''));
+   item.appendChild(copy);item.appendChild(element('div',message.text));list.appendChild(item);
+  }feed.appendChild(list);main.appendChild(feed);
  }
  document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
 }
