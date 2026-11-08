@@ -341,7 +341,7 @@ def test_captcha_validates_actual_hh_redirect(workspace,monkeypatch,code,locatio
         backurl='hh://applicant/captchaSuccessBackUrl',session=session)
     assert result is accepted
     message=apply_captcha.status(workspace[1])
-    assert message['state']==('accepted' if accepted else 'rejected')
+    assert message['state']==('submitting' if accepted else 'rejected')
     assert 'private' not in message['message']
     sent=session.request.call_args.kwargs
     assert sent['params']['captchaText']=='private-answer'
@@ -417,4 +417,27 @@ def test_successful_captcha_resets_consecutive_failure_budget(workspace,monkeypa
         assert tool._solve_captcha(b'image')=='answer'
         assert tool._send_captcha('answer','key','state',referer_url='https://hh.ru/account/captcha',
             backurl='hh://applicant/captchaSuccessBackUrl',session=session)
+        assert tool._captcha_ui_count==1
+        tool._application_succeeded()
         assert tool._captcha_ui_count==0
+
+
+def test_hh_302_without_location_retries_api_without_resetting_budget(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    monkeypatch.setattr(apply_captcha,'request',Mock(return_value='answer'))
+    session=Mock()
+    session.cookies.get.return_value='xsrf'
+    session.request.return_value=Mock(status_code=302,headers={},json=Mock(side_effect=ValueError))
+    tool=BotTool()
+    for count in range(1,4):
+        tool._solve_captcha(b'image')
+        assert tool._send_captcha('answer','key','state',referer_url='https://hh.ru/account/captcha',
+            backurl='hh://applicant/captchaSuccessBackUrl',session=session)
+        assert tool._captcha_ui_count==count
+        assert apply_captcha.status(workspace[1])['state']=='submitting'
+    with pytest.raises(SystemExit): tool._solve_captcha(b'image')
+    tool._application_succeeded()
+    assert tool._captcha_ui_count==0
+    assert apply_captcha.status(workspace[1])['state']=='accepted'

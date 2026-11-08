@@ -42,8 +42,18 @@ class ObservedApplyOperation(ApplyOperation):
             return result
         finally:
             self.metrics['sent'] += state.applied_count - before
+            if state.applied_count > before and isinstance(getattr(self,'tool',None),BotTool):
+                self.tool._application_succeeded()
 
 class BotTool(HHApplicantTool):
+    def _application_succeeded(self):
+        self._captcha_ui_count=0
+        if getattr(self,'_captcha_pending_api',False):
+            import apply_captcha, profiles_lib
+            self._captcha_pending_api=False
+            apply_captcha.event(profiles_lib.get_active_profile()[0], 'accepted',
+                'Проверка пройдена: HH принял отклик после CAPTCHA.')
+
     def _solve_captcha(self, image_data):
         if os.environ.get('HH_BOT_CAPTCHA_UI') == '1':
             import apply_captcha, profiles_lib
@@ -122,8 +132,14 @@ class BotTool(HHApplicantTool):
                   and actual.scheme.lower()==expected.scheme.lower()
                   and actual.netloc.lower()==expected.netloc.lower()
                   and actual.path.rstrip('/')==expected.path.rstrip('/'))
-        if accepted:
-            self._captcha_ui_count=0
+        # HH's CAPTCHA endpoint can return 302 without Location. That is not
+        # proof of rejection: let the protected API request verify the result.
+        provisional=(response.status_code==302 and not destination
+                     and (not isinstance(body,dict) or
+                          not (body.get('errors') or body.get('hhcaptcha') or body.get('success') is False)))
+        can_retry=bool(accepted or provisional)
+        if can_retry:
+            self._captcha_pending_api=True
         if actual:
             known_path=actual.path if actual.path in ('/','/account/captcha','/captcha','/captchaSuccessBackUrl') else '/[другой путь]'
             known_host=actual.hostname if actual.hostname in ('hh.ru','www.hh.ru','applicant') else '[другой хост]'
@@ -132,12 +148,12 @@ class BotTool(HHApplicantTool):
         else:
             details.append('Location отсутствует')
         profile=profiles_lib.get_active_profile()[0]
-        apply_captcha.event(profile,'accepted' if accepted else 'rejected',
-            ('HH принял CAPTCHA' if accepted else 'HH не подтвердил принятие CAPTCHA')+
+        apply_captcha.event(profile,'submitting' if can_retry else 'rejected',
+            ('Ответ CAPTCHA отправлен. Проверяем результат повторным запросом к HH' if can_retry else 'HH не подтвердил принятие CAPTCHA')+
             '; HTTP '+str(response.status_code)+
             '; переход '+('успешный' if accepted else 'отсутствует или неожиданный')+
             '; '+ '; '.join(details))
-        return accepted
+        return can_retry
 
     def _assign_args(self, args):
         super()._assign_args(args)
