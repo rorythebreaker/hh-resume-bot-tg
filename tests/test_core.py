@@ -324,6 +324,9 @@ def test_rate_limit_still_stops_run(workspace,monkeypatch):
 
 @pytest.mark.parametrize('code,location,accepted',[
     (302,'hh://applicant/captchaSuccessBackUrl',True),
+    (302,'hh://applicant/captchaSuccessBackUrl?result=ok',True),
+    (302,'hh%3A%2F%2Fapplicant%2FcaptchaSuccessBackUrl',True),
+    (302,'hh://other/captchaSuccessBackUrl',False),
     (302,'/account/captcha?state=rejected',False),
     (403,'',False),(200,'',False)])
 def test_captcha_validates_actual_hh_redirect(workspace,monkeypatch,code,location,accepted):
@@ -399,3 +402,19 @@ def test_captcha_diagnostics_keep_flags_without_secret_body(workspace,monkeypatc
     assert 'isBot=true' in message
     assert 'captcha_required' in message
     assert 'private' not in message
+
+
+def test_successful_captcha_resets_consecutive_failure_budget(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    monkeypatch.setattr(apply_captcha,'request',Mock(return_value='answer'))
+    session=Mock()
+    session.cookies.get.return_value='xsrf'
+    session.request.return_value=Mock(status_code=302,headers={'Location':'hh://applicant/captchaSuccessBackUrl?success=1'})
+    tool=BotTool()
+    for _ in range(6):
+        assert tool._solve_captcha(b'image')=='answer'
+        assert tool._send_captcha('answer','key','state',referer_url='https://hh.ru/account/captcha',
+            backurl='hh://applicant/captchaSuccessBackUrl',session=session)
+        assert tool._captcha_ui_count==0

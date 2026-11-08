@@ -49,7 +49,10 @@ class BotTool(HHApplicantTool):
             import apply_captcha, profiles_lib
             self._captcha_ui_count = getattr(self, '_captcha_ui_count', 0) + 1
             if self._captcha_ui_count > 3:
-                apply_captcha.event(profiles_lib.get_active_profile()[0], 'stopped', 'Прогон остановлен после трёх CAPTCHA. Проверьте результат в логе.')
+                profile=profiles_lib.get_active_profile()[0]
+                previous=apply_captcha.status(profile)
+                detail=(' Последний результат: '+previous['message']) if previous else ''
+                apply_captcha.event(profile, 'stopped', 'Прогон остановлен после трёх неподтверждённых CAPTCHA подряд.'+detail)
                 raise SystemExit(6)
             try:
                 return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
@@ -65,7 +68,7 @@ class BotTool(HHApplicantTool):
         if os.environ.get('HH_BOT_CAPTCHA_UI') != '1':
             return super()._send_captcha(text, key, state, referer_url=referer_url,
                 xsrf_token=xsrf_token, backurl=backurl, session=session)
-        from urllib.parse import urljoin, urlsplit, quote
+        from urllib.parse import urljoin, urlsplit, quote, unquote
         from hh_applicant_tool.tool import _CAPTCHA_HEADERS
         import apply_captcha, profiles_lib
         session = session or self.session
@@ -111,9 +114,23 @@ class BotTool(HHApplicantTool):
         if not details:
             details.append('тело '+('JSON' if isinstance(body,dict) else 'не JSON'))
         destination=response.headers.get('Location','')
+        actual=urlsplit(urljoin(target,unquote(destination))) if destination else None
+        expected=urlsplit(urljoin(target,backurl or '/'))
         accepted=(response.status_code in (301,302,303,307,308)
-                  and bool(destination)
-                  and urljoin(target,destination)==urljoin(target,backurl or '/'))
+                  and actual is not None
+                  and not actual.username and not actual.password
+                  and actual.scheme.lower()==expected.scheme.lower()
+                  and actual.netloc.lower()==expected.netloc.lower()
+                  and actual.path.rstrip('/')==expected.path.rstrip('/'))
+        if accepted:
+            self._captcha_ui_count=0
+        if actual:
+            known_path=actual.path if actual.path in ('/','/account/captcha','/captcha','/captchaSuccessBackUrl') else '/[другой путь]'
+            known_host=actual.hostname if actual.hostname in ('hh.ru','www.hh.ru','applicant') else '[другой хост]'
+            known_scheme=actual.scheme if actual.scheme in ('http','https','hh') else '[другая схема]'
+            details.append('Location: '+known_scheme+'://'+known_host+known_path)
+        else:
+            details.append('Location отсутствует')
         profile=profiles_lib.get_active_profile()[0]
         apply_captcha.event(profile,'accepted' if accepted else 'rejected',
             ('HH принял CAPTCHA' if accepted else 'HH не подтвердил принятие CAPTCHA')+
