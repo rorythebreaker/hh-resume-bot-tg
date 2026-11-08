@@ -441,3 +441,31 @@ def test_hh_302_without_location_retries_api_without_resetting_budget(workspace,
     tool._application_succeeded()
     assert tool._captcha_ui_count==0
     assert apply_captcha.status(workspace[1])['state']=='accepted'
+
+
+def test_watcher_notifies_successful_manual_apply_while_schedule_paused(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    from security import SecretFilter
+    import logging
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(watcher,'STATE_FILE',tmp_path/'state.json')
+    monkeypatch.setattr(watcher,'hh_get_vacancy',Mock(return_value=('Engineer','Example')))
+    send=Mock(return_value=True)
+    monkeypatch.setattr(watcher,'send_notification',send)
+    (tmp_path/'.paused').touch()
+    filter=SecretFilter()
+    lines=[]
+    for message in ["(1/3) POST https://api.hh.ru/negotiations data={'vacancy_id': '12345'}",
+                    'POST https://api.hh.ru/negotiations 201']:
+        record=logging.LogRecord('hh_applicant_tool',logging.DEBUG,'',0,message,(),None)
+        filter.filter(record);lines.append(record.getMessage())
+    log=tmp_path/'log.txt'
+    log.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    state={'pos_main':0}
+    watcher.process_log('main',log,state)
+    send.assert_called_once()
+    assert 'https://hh.ru/vacancy/12345' in send.call_args.args[0]
+    assert 'Engineer' in send.call_args.args[0]
+    assert (tmp_path/'.paused').exists()
+    watcher.process_log('main',log,state)
+    send.assert_called_once()

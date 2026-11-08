@@ -238,10 +238,6 @@ def save_state(state):
 
 
 def notify_apply(vid, hh_account):
-    pause_flag = CONFIG_DIR / ".paused"
-    if pause_flag.exists():
-        print(f"Pause flag set, skipping notification for {vid}", flush=True)
-        return
     name, employer = hh_get_vacancy(vid, hh_account)
     url = f"https://hh.ru/vacancy/{vid}"
     if name:
