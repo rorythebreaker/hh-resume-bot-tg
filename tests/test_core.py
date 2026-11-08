@@ -294,3 +294,29 @@ def test_observed_upstream_skip_counter(monkeypatch):
     monkeypatch.setattr(Operation,'_process_vacancy',lambda *args:None)
     operation._process_vacancy({}, {}, {}, set(), state)
     assert operation.metrics['skipped']==1 and operation.metrics['sent']==0
+
+
+def test_plain_forbidden_does_not_abort_before_hh_error_body(monkeypatch):
+    module=load_runner()
+    from io import StringIO
+    proc=Mock()
+    proc.stdout=StringIO('403 POST https://api.hh.ru/negotiations\n[E] negotiations: already_applied\n')
+    proc.wait.return_value=0
+    monkeypatch.setattr(module.subprocess,'Popen',Mock(return_value=proc))
+    sent,limit,blocked,rc=module.run_pass(['fake'])
+    assert not blocked
+    assert module.METRICS['errors']==1
+    proc.terminate.assert_not_called()
+
+
+def test_confirmed_captcha_still_stops_run(workspace,monkeypatch):
+    module=load_runner()
+    from io import StringIO
+    root,_=workspace
+    monkeypatch.setattr(module,'PAUSE_FLAG',str(root/'config'/'.paused'))
+    proc=Mock();proc.stdout=StringIO('Captcha required: https://hh.ru/account/captcha\n')
+    proc.wait.return_value=2
+    monkeypatch.setattr(module.subprocess,'Popen',Mock(return_value=proc))
+    assert module.run_pass(['fake'])[2]
+    assert (root/'config'/'.paused').exists()
+    proc.terminate.assert_called_once()

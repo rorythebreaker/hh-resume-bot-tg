@@ -32,7 +32,7 @@ METRICS = {"found": 0, "skipped": 0, "errors": 0}
 
 POST_OK_RE = re.compile(r"201 POST https://api\.hh\.ru/negotiations")
 LIMIT_RE = re.compile(r"Лимит откликов|Достигли лимита на отклики")
-BLOCK_RE = re.compile(r"(?:403 POST https://api\.hh\.ru/negotiations|429 POST https://api\.hh\.ru/negotiations|Требуется капча|captcha required|API-ключ не задан)", re.I)
+BLOCK_RE = re.compile(r"(?:429 POST https://api\.hh\.ru/negotiations|Требуется капча|captcha required|API-ключ не задан)", re.I)
 
 
 def report(total_sent, passes_done, stop_reason):

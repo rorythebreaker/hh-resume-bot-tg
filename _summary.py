@@ -175,7 +175,7 @@ if status_line and stop_reason != "daily_limit":
 if RC != 0 or errors:
     import html
     from security import redact
-    diagnostics = [line for line in log.splitlines() if re.search(r'ERROR|Exception|Traceback|\[E\]', line)]
+    diagnostics = [line for line in log.splitlines() if not re.match(r'^(?:ERRORS|CORE_METRICS):', line) and re.search(r'ERROR|Exception|Traceback|\[E\]|403 POST|429 POST|[Cc]aptcha', line)]
     if diagnostics:
         lines.append('<pre>' + html.escape(redact('\n'.join(diagnostics[-3:]))[-1000:]) + '</pre>')
 
