@@ -44,6 +44,12 @@ class ObservedApplyOperation(ApplyOperation):
             self.metrics['sent'] += state.applied_count - before
 
 class BotTool(HHApplicantTool):
+    def _solve_captcha(self, image_data):
+        if os.environ.get('HH_BOT_CAPTCHA_UI') == '1':
+            import apply_captcha, profiles_lib
+            return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
+        return super()._solve_captcha(image_data)
+
     def _assign_args(self, args):
         super()._assign_args(args)
         if isinstance(getattr(args.operation_run, '__self__', None), ApplyOperation):

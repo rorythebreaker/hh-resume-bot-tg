@@ -32,7 +32,7 @@ METRICS = {"found": 0, "skipped": 0, "errors": 0}
 
 POST_OK_RE = re.compile(r"201 POST https://api\.hh\.ru/negotiations")
 LIMIT_RE = re.compile(r"Лимит откликов|Достигли лимита на отклики")
-BLOCK_RE = re.compile(r"(?:429 POST https://api\.hh\.ru/negotiations|Требуется капча|captcha required|API-ключ не задан)", re.I)
+BLOCK_RE = re.compile(r"429 POST https://api\.hh\.ru/negotiations", re.I)
 
 
 def report(total_sent, passes_done, stop_reason):
@@ -141,6 +141,7 @@ def main():
         overlay[f'openai.{section}.delay'] = 60 / ai['rate_limit']
         overlay[f'openai.{section}.max_retries'] = 2
     os.environ['HH_BOT_OVERLAY'] = json.dumps(overlay)
+    os.environ['HH_BOT_CAPTCHA_UI'] = '1'
     args = cli_args(hh_account, '--use-ai' if use_ai else '--no-use-ai',
                     '-vv', 'apply-vacancies', '--force-cover-letter', '--search', search, '--area', area)
 

@@ -309,12 +309,12 @@ def test_plain_forbidden_does_not_abort_before_hh_error_body(monkeypatch):
     proc.terminate.assert_not_called()
 
 
-def test_confirmed_captcha_still_stops_run(workspace,monkeypatch):
+def test_rate_limit_still_stops_run(workspace,monkeypatch):
     module=load_runner()
     from io import StringIO
     root,_=workspace
     monkeypatch.setattr(module,'PAUSE_FLAG',str(root/'config'/'.paused'))
-    proc=Mock();proc.stdout=StringIO('Captcha required: https://hh.ru/account/captcha\n')
+    proc=Mock();proc.stdout=StringIO('429 POST https://api.hh.ru/negotiations\n')
     proc.wait.return_value=2
     monkeypatch.setattr(module.subprocess,'Popen',Mock(return_value=proc))
     assert module.run_pass(['fake'])[2]

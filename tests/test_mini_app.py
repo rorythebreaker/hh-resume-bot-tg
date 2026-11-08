@@ -273,3 +273,60 @@ def test_shell_manual_run_preserves_errors_on_pause(workspace,monkeypatch):
     result=subprocess.run(['bash',str(script)],env=env,capture_output=True,text=True,timeout=15)
     assert result.returncode==0
     assert 'skipping' in result.stdout
+
+
+def test_application_captcha_accepts_owner_answer(app):
+    import apply_captcha
+    pid=app.bot.profiles_lib.get_active_profile()[0]
+    outcome=[]
+    worker=threading.Thread(target=lambda:outcome.append(apply_captcha.request(b'png',pid,timeout=5)))
+    worker.start()
+    try:
+        for _ in range(100):
+            if apply_captcha.pending(pid): break
+            time.sleep(.01)
+        raw=signed();state=app.request(raw,'/api/state')
+        assert state['input']['action'].startswith('apply_captcha:')
+        assert state['captcha']=='cG5n'
+        assert apply_captcha.pending('different-profile') is None
+        nonce=state['input']['nonce']
+        app.request(raw,'/api/input',{'nonce':nonce,'text':'abc123'})
+        with pytest.raises(ValueError):
+            app.request(raw,'/api/input',{'nonce':nonce,'text':'replay'})
+        worker.join(2)
+        assert outcome==['abc123']
+        assert not apply_captcha.location().exists()
+    finally:
+        worker.join(6)
+
+
+def test_application_captcha_rejects_stale_challenge(workspace):
+    import apply_captcha
+    from storage import atomic_write
+    root,pid=workspace
+    data={'id':'current','profile':pid,'expires':time.time()+60,'image':'png'}
+    atomic_write(apply_captcha.location(),json.dumps(data))
+    with pytest.raises(ValueError): apply_captcha.answer(pid,'old','answer')
+    with pytest.raises(ValueError): apply_captcha.answer('other','current','answer')
+    data['expires']=0
+    atomic_write(apply_captcha.location(),json.dumps(data))
+    with pytest.raises(ValueError): apply_captcha.answer(pid,'current','answer')
+
+
+def test_application_captcha_timeout_cleans_pending(workspace):
+    import apply_captcha
+    with pytest.raises(TimeoutError): apply_captcha.request(b'png',workspace[1],timeout=0)
+    assert not apply_captcha.location().exists()
+
+
+def test_application_captcha_cancel_in_mini_app(app):
+    import apply_captcha
+    from storage import atomic_write
+    pid=app.bot.profiles_lib.get_active_profile()[0]
+    atomic_write(apply_captcha.location(),json.dumps({'id':'current','profile':pid,'expires':time.time()+60,'image':'png'}))
+    raw=signed();app.request(raw,'/api/state')
+    state=app.request(raw,'/api/cancel',{})
+    from pathlib import Path
+    reply=json.loads(Path(str(apply_captcha.location())+'.answer').read_text())
+    assert reply['text']=='__cancel__'
+    assert state['input'] is None

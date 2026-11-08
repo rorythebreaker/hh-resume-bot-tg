@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlsplit
 from html_bubbles import plain_text
 from security import redact
 import mini_app_context as context
+import apply_captcha
 
 ASSETS = Path(__file__).with_name('mini_app')
 MAX_BODY = 65536
@@ -126,6 +127,10 @@ class MiniApp:
             for row in session.menu['rows']:
                 rows.append([{'id':key,'label':entry[0]} for key,entry in [next(items) for _ in row]])
             action = 'auth_input' if bot.AUTH_DIALOG.get('active') else bot.PENDING.get('action')
+            challenge = apply_captcha.pending(pid)
+            if challenge:
+                action = 'apply_captcha:' + challenge['id']
+                session.image = challenge['image']
             if action:
                 if session.input_nonce is None or session.input_action != action:
                     session.input_nonce = secrets.token_hex(12)
@@ -145,7 +150,7 @@ class MiniApp:
                     'messages':list(session.messages),
                     'input':{'action':action,'nonce':session.input_nonce,
                              'secret':bool(action and (action.startswith('aicfg:api_key') or action=='auth_input'))} if action else None,
-                    'captcha':session.image if action=='auth_input' else None,
+                    'captcha':session.image if action and (action=='auth_input' or action.startswith('apply_captcha:')) else None,
                     'notifications':'Сводки и уведомления продолжают приходить в чат бота.'}
 
     def request(self, init_data, route, body=None):
@@ -195,6 +200,12 @@ class MiniApp:
                     if (not session.input_nonce or nonce != session.input_nonce
                             or not isinstance(text,str) or not 1 <= len(text) <= 12000):
                         raise ValueError('Форма устарела. Обновите панель и повторите.')
+                    if session.input_action and session.input_action.startswith('apply_captcha:'):
+                        if session.profile != bot.profiles_lib.get_active_profile()[0]:
+                            raise ValueError('Profile changed')
+                        apply_captcha.answer(session.profile, session.input_action.split(':',1)[1], text)
+                        session.input_nonce = None
+                        return self.snapshot(session)
                     current_action = 'auth_input' if bot.AUTH_DIALOG.get('active') else bot.PENDING.get('action')
                     if (not current_action or current_action != session.input_action
                             or session.profile != bot.profiles_lib.get_active_profile()[0]):
@@ -202,6 +213,11 @@ class MiniApp:
                     session.input_nonce = None
                 bot.handle_message(self.owner,text,None)
             elif route == '/api/cancel':
+                if session.input_action and session.input_action.startswith('apply_captcha:'):
+                    if session.profile != bot.profiles_lib.get_active_profile()[0]:
+                        raise ValueError('Profile changed')
+                    apply_captcha.answer(session.profile, session.input_action.split(':',1)[1], '__cancel__')
+                    return self.snapshot(session)
                 bot.send(self.owner,bot.cmd_cancel())
                 session.set_menu(bot.build_menu_main())
                 session.profile = bot.profiles_lib.get_active_profile()[0]
