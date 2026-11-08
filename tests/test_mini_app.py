@@ -330,3 +330,15 @@ def test_application_captcha_cancel_in_mini_app(app):
     reply=json.loads(Path(str(apply_captcha.location())+'.answer').read_text())
     assert reply['text']=='__cancel__'
     assert state['input'] is None
+
+
+def test_captcha_result_survives_large_log_truncation(app):
+    import apply_captcha
+    pid=app.bot.profiles_lib.get_active_profile()[0]
+    apply_captcha.event(pid,'rejected','HH rejected CAPTCHA; HTTP 403')
+    path=app.bot.CONFIG_DIR/'main'/'last-run.log'
+    path.parent.mkdir(exist_ok=True)
+    path.write_text('x'*20000,encoding='utf-8')
+    text=app.bot.cmd_log()
+    assert 'HH rejected CAPTCHA; HTTP 403' in text
+    assert len(text)<4000
