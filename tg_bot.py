@@ -512,10 +512,9 @@ def _cmd_run_confirmed(chat_id):
 
     Пауза останавливает расписание, но не ручной запуск: нажатие «Старт» —
     это явное намерение, и требовать перед ним «Возобновить» незачем."""
-    if is_paused():
-        return 'Отклики на паузе. Сначала нажмите «Возобновить».'
+    paused = is_paused()
     pid, profile = profiles_lib.get_active_profile()
-    run_env = {**os.environ, 'HH_BOT_PROFILE': json.dumps([pid, profile])}
+    run_env = {**os.environ, 'HH_BOT_PROFILE': json.dumps([pid, profile]), 'APPLY_IGNORE_PAUSE': '1', 'APPLY_SCHEDULED': '0'}
 
     def runner():
         try:
@@ -1451,10 +1450,13 @@ def cmd_cleanup(chat_id):
 
 def cmd_log():
     """Последние 30 строк лога утилиты."""
-    if not get_active_tool_log().exists():
+    log_path = CONFIG_DIR / active_hh_account() / "last-run.log"
+    if not log_path.exists():
+        log_path = get_active_tool_log()
+    if not log_path.exists():
         return "Лог пуст или не создан."
     try:
-        with get_active_tool_log().open("r", errors="ignore") as f:
+        with log_path.open("r", errors="ignore") as f:
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - 30_000))
@@ -1463,7 +1465,7 @@ def cmd_log():
         out = "\n".join(lines)
         if len(out) > 3500:
             out = out[-3500:]
-        return f"📜 <b>Хвост лога:</b>\n\n<pre>{html.escape(out)}</pre>"
+        return f"📜 <b>Хвост лога:</b>\n\n<pre>{html.escape(redact(out))}</pre>"
     except Exception as e:
         return f"⚠️ {html.escape(str(e))}"
 
@@ -2489,7 +2491,7 @@ def cmd_backup(chat_id):
                                  capture_output=True, text=True, timeout=600)
             if res.returncode != 0:
                 out = ((res.stderr or "") + (res.stdout or ""))[-800:]
-                send(chat_id, f"⚠️ Бэкап не собрался:\n<pre>{html.escape(out)}</pre>")
+                send(chat_id, f"⚠️ Бэкап не собрался:\n<pre>{html.escape(redact(out))}</pre>")
         except Exception as e:
             send(chat_id, f"⚠️ Ошибка бэкапа: {html.escape(str(e))}")
 
@@ -2779,6 +2781,7 @@ def handle_callback(chat_id, message_id, data):
         if not item or item[0] != token or item[2] < time.monotonic() or item[1] != profiles_lib.get_active_profile()[0]:
             send(chat_id, 'Кнопка устарела. Откройте меню заново.'); return
         if data.startswith('runcancel:'):
+            send_menu(chat_id, menu_by_name('ctl'), edit_message_id=message_id)
             send(chat_id, 'Отклик отменён.'); return
         send(chat_id, _cmd_run_confirmed(chat_id)); return
     if VK and data.startswith("page:"):

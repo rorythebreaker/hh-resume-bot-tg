@@ -154,6 +154,9 @@ class MiniApp:
         with self.lock, context.capture(session):
             if route == '/api/state':
                 pass
+            elif route == '/api/messages/clear':
+                with session.lock:
+                    session.messages.clear()
             elif route == '/api/view':
                 name = (body or {}).get('name')
                 if name not in ('main','ctl','view','profile','filters','ai','schedule'):
@@ -183,6 +186,8 @@ class MiniApp:
                     elif destination in ('main','view','help','tracked'):
                         session.section = 'main'
                 bot.handle_callback(self.owner, session.message_id, entry[1])
+                if entry[1].startswith(('runconfirm:', 'runcancel:')):
+                    session.set_menu(bot.menu_by_name('ctl'), session.profile)
             elif route == '/api/input':
                 with session.lock:
                     nonce = (body or {}).get('nonce')

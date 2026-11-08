@@ -203,3 +203,73 @@ def test_profile_switch_keeps_profile_screen(app):
     assert state['profile']['name']=='Other'
     assert 'Профиль: Other' in state['menu']['title']
     assert state['section']=='profile'
+
+
+def test_clear_messages_preserves_pending_input(app):
+    raw=signed()
+    app.request(raw,'/api/state')
+    session=app.session(raw)
+    session.add_text('old response')
+    app.bot.PENDING['action']='letter_set'
+    state=app.request(raw,'/api/messages/clear',{})
+    assert state['messages']==[]
+    assert state['input']['action']=='letter_set'
+    assert state['menu']['rows']
+
+
+def test_bulk_cancel_replaces_confirmation_menu(app,monkeypatch):
+    run=Mock();monkeypatch.setattr(app.bot,'_cmd_run_confirmed',run)
+    raw=signed();app.request(raw,'/api/view',{'name':'ctl'})
+    session=app.session(raw)
+    app.request(raw,'/api/action',{'id':action_id(session,'cmd:/run')})
+    cancel=next(k for k,v in session.actions.items() if v[1].startswith('runcancel:'))
+    state=app.request(raw,'/api/action',{'id':cancel})
+    assert not any(v[1].startswith(('runconfirm:','runcancel:')) for v in session.actions.values())
+    assert any(v[1]=='cmd:/run' for v in session.actions.values())
+    run.assert_not_called()
+
+
+def test_manual_launch_ignores_schedule_pause_without_resuming(app,monkeypatch):
+    bot=app.bot
+    bot.PAUSE_FLAG.touch()
+    process=Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr(bot.subprocess,'run',process)
+    class Immediate:
+        def __init__(self,target,**kwargs): self.target=target
+        def start(self): self.target()
+    monkeypatch.setattr(bot.mini_app_context,'make_thread',Immediate)
+    reply=bot._cmd_run_confirmed(OWNER)
+    assert reply
+    assert bot.is_paused()
+    env=process.call_args.kwargs['env']
+    assert env['APPLY_IGNORE_PAUSE']=='1'
+    assert env['APPLY_SCHEDULED']=='0'
+
+
+def test_log_shows_persisted_run_failure(app):
+    path=app.bot.CONFIG_DIR/'main'/'last-run.log'
+    path.parent.mkdir(exist_ok=True)
+    path.write_text('ERROR: missing authorization',encoding='utf-8')
+    assert 'missing authorization' in app.bot.cmd_log()
+
+
+def test_shell_manual_run_preserves_errors_on_pause(workspace,monkeypatch):
+    import os,sys,subprocess
+    from pathlib import Path
+    if sys.platform=='win32': pytest.skip('Linux production shell test')
+    root,_=workspace
+    (root/'config'/'.paused').touch()
+    (root/'run-apply.py').write_text("print('ERROR: simulated failure')\nraise SystemExit(7)\n")
+    (root/'_summary.py').write_text('')
+    env={**os.environ,'APP_DIR':str(root),'CONFIG_DIR':str(root/'config'),
+         'HH_BOT_PROFILE':json.dumps(['test',{'hh_account':'main'}]),
+         'APPLY_IGNORE_PAUSE':'1','PYTHONPATH':str(Path(__file__).resolve().parents[1])}
+    script=Path(__file__).resolve().parents[1]/'apply_with_notify.sh'
+    result=subprocess.run(['bash',str(script)],env=env,capture_output=True,text=True,timeout=15)
+    assert result.returncode==7,result.stderr
+    assert 'simulated failure' in (root/'config'/'main'/'last-run.log').read_text()
+    assert (root/'config'/'.paused').exists()
+    env.pop('APPLY_IGNORE_PAUSE')
+    result=subprocess.run(['bash',str(script)],env=env,capture_output=True,text=True,timeout=15)
+    assert result.returncode==0
+    assert 'skipping' in result.stdout

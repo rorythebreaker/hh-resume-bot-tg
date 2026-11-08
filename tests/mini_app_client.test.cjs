@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../mini_app/app.mjs'),'utf8').replace('export function actionStyle','function actionStyle');
 class Element{
- constructor(tag='div'){this.tagName=tag;this.children=[];this.value='';this.dataset={};this.className='';this.hidden=false;this.disabled=false;this._text='';this.classList={add:()=>{},toggle:()=>{}};}
+ constructor(tag='div'){this.tagName=tag;this.children=[];this.value='';this.dataset={};this.className='';this.hidden=false;this.disabled=false;this._text='';this.classList={add:()=>{},remove:()=>{},toggle:()=>{}};}
  set textContent(text){this._text=String(text);this.children=[];}get textContent(){return this._text;}
  appendChild(child){this.children.push(child);return child;}click(){if(this.onclick)return this.onclick();}
  matches(selector){return selector.split(',').includes(this.tagName);}
@@ -33,4 +33,24 @@ test('menu click sends only the server-issued action token',async()=>{
 test('server menu markup is displayed as text',async()=>{
  const payload={...sample,menu:{title:'<img src=x onerror=alert(1)>',rows:[]}};
  const ui=await boot({initData:'signed-context',response:payload});assert.ok(flatten(ui.main).some(x=>x.textContent===payload.menu.title));assert.equal(flatten(ui.main).filter(x=>x.tagName==='img').length,0);
+});
+
+
+test('notification card is removed',async()=>{
+ const ui=await boot({initData:'signed-context'});
+ assert.equal(flatten(ui.main).filter(el=>el.className==='notice').length,0);
+});
+
+test('clear replies uses authenticated server endpoint',async()=>{
+ const ui=await boot({initData:'signed-context',response:{...sample,messages:[{text:'old reply'}]}});
+ const clear=flatten(ui.main).find(el=>el.tagName==='button'&&el.textContent==='\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c');
+ assert.ok(clear);clear.click();await Promise.resolve();
+ assert.equal(ui.calls[1].url,'/api/messages/clear');
+ assert.equal(ui.calls[1].options.headers.Authorization,'tma signed-context');
+});
+
+test('actions disable every button during request',async()=>{
+ const ui=await boot({initData:'signed-context'});
+ const action=flatten(ui.main).find(el=>el.tagName==='button'&&el.textContent==='Start');
+ action.click();assert.ok(ui.buttons.every(button=>button.disabled));
 });

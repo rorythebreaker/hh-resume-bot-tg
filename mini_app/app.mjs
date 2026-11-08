@@ -38,9 +38,10 @@ async function api(route,body){
 async function update(route='/api/state',body,quiet=false){
  if(busy)return;
  busy=true;
+ if(!quiet){document.querySelectorAll('button').forEach(b=>b.disabled=true);main.classList.add('is-loading');}
  try{current=await api(route,body);render();}
  catch(error){if(!quiet)toast(error.message);}
- finally{busy=false;document.querySelectorAll('button').forEach(button=>button.disabled=false);}
+ finally{busy=false;main.classList.remove('is-loading');document.querySelectorAll('button').forEach(button=>button.disabled=false);}
 }
 function render(){
  const data=current;if(!data)return;if(data.section)view=data.section;
@@ -78,10 +79,9 @@ function render(){
   main.appendChild(form);
  }
  if(data.messages.length){
-  const feed=element('section',undefined,'card');feed.appendChild(element('div','Ответы бота','section-title'));
+  const feed=element('section',undefined,'card');const heading=element('div',undefined,'section-title');heading.appendChild(element('h2','Ответы бота'));const clear=element('button','Очистить');clear.onclick=()=>update('/api/messages/clear',{});heading.appendChild(clear);feed.appendChild(heading);
   const list=element('div',undefined,'messages');for(const message of data.messages.slice(-8))list.appendChild(element('div',message.text,'message'));feed.appendChild(list);main.appendChild(feed);
  }
- const note=element('div',undefined,'notice');note.appendChild(element('span','↗'));const copy=element('div');copy.appendChild(element('b','Уведомления в Telegram'));copy.appendChild(element('div',data.notifications));note.appendChild(copy);main.appendChild(note);
  document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
 }
 document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;update('/api/view',{name:view});});

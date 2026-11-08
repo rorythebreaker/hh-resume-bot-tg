@@ -172,6 +172,13 @@ if status_line and stop_reason != "daily_limit":
     lines.append("")
     lines.append(status_line)
 
+if RC != 0 or errors:
+    import html
+    from security import redact
+    diagnostics = [line for line in log.splitlines() if re.search(r'ERROR|Exception|Traceback|\[E\]', line)]
+    if diagnostics:
+        lines.append('<pre>' + html.escape(redact('\n'.join(diagnostics[-3:]))[-1000:]) + '</pre>')
+
 msg = "\n".join(lines)
 
 if os.environ.get("BOT_TRANSPORT", "telegram").strip().lower() == "vk":
