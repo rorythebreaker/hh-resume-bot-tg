@@ -44,6 +44,7 @@ def request(image, profile, timeout=180):
           'image':base64.b64encode(image).decode()}
     atomic_write(path,json.dumps(data))
     event(profile,'waiting','HH запросил CAPTCHA. Введите текст с картинки.')
+    notify_owner()
     try:
         while time.time()<data['expires']:
             try:
@@ -56,6 +57,7 @@ def request(image, profile, timeout=180):
             except (OSError,ValueError,KeyError):
                 pass
             time.sleep(.25)
+        event(profile,'expired','Время ожидания CAPTCHA истекло: ответ не получен за три минуты.')
         raise TimeoutError('CAPTCHA answer not received within 3 minutes')
     finally:
         with file_lock(str(path)+'.lock'):
@@ -81,3 +83,23 @@ def event(profile, state, message):
     value={'profile':profile,'state':state,'message':message,'time':time.time()}
     atomic_write(str(location())+'.status',json.dumps(value))
     print('CAPTCHA_STATUS: '+message,flush=True)
+
+
+def notify_owner():
+    """Notify about a live challenge, without exposing image keys or answers."""
+    from urllib.request import Request, urlopen
+    token=os.environ.get('TG_BOT_TOKEN','')
+    owner=os.environ.get('TG_CHAT_ID','')
+    if not token or not owner or os.environ.get('BOT_TRANSPORT','telegram') != 'telegram':
+        return
+    payload={'chat_id':owner,'text':'HH запросил CAPTCHA. Откройте Mini App и введите текст с картинки в течение трёх минут. Прогон ожидает ваш ответ.'}
+    url=os.environ.get('TG_MINI_APP_URL','')
+    if url.startswith('https://'):
+        payload['reply_markup']={'inline_keyboard':[[{'text':'Открыть Mini App','web_app':{'url':url}}]]}
+    root=os.environ.get('TG_API_ROOT','https://api.telegram.org').rstrip('/')
+    try:
+        request=Request(root+'/bot'+token+'/sendMessage',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
+        with urlopen(request,timeout=10) as response:
+            response.read()
+    except Exception:
+        print('CAPTCHA notification unavailable; open Mini App to check the challenge.',flush=True)

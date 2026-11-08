@@ -50,8 +50,14 @@ class BotTool(HHApplicantTool):
             self._captcha_ui_count = getattr(self, '_captcha_ui_count', 0) + 1
             if self._captcha_ui_count > 3:
                 apply_captcha.event(profiles_lib.get_active_profile()[0], 'stopped', 'Прогон остановлен после трёх CAPTCHA. Проверьте результат в логе.')
-                raise SystemExit(2)
-            return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
+                raise SystemExit(6)
+            try:
+                return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
+            except TimeoutError:
+                raise SystemExit(4) from None
+            except RuntimeError:
+                apply_captcha.event(profiles_lib.get_active_profile()[0], 'cancelled', 'Ввод CAPTCHA отменён. Прогон остановлен.')
+                raise SystemExit(5) from None
         return super()._solve_captcha(image_data)
 
     def _send_captcha(self, text, key, state, referer_url=None,

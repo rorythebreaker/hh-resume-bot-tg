@@ -356,3 +356,28 @@ def test_captcha_cycle_is_bounded(workspace,monkeypatch):
     with pytest.raises(SystemExit): tool._solve_captcha(b'image')
     assert request.call_count==3
     assert apply_captcha.status(workspace[1])['state']=='stopped'
+
+
+def test_captcha_timeout_becomes_controlled_stop(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    monkeypatch.setattr(apply_captcha,'request',Mock(side_effect=TimeoutError('expired')))
+    with pytest.raises(SystemExit) as error: BotTool()._solve_captcha(b'image')
+    assert error.value.code==4
+
+
+def test_captcha_notification_has_no_challenge_secrets(monkeypatch):
+    import apply_captcha,json
+    from unittest.mock import MagicMock
+    monkeypatch.setenv('TG_BOT_TOKEN','test-not-a-real-token')
+    monkeypatch.setenv('TG_CHAT_ID','123')
+    monkeypatch.setenv('TG_MINI_APP_URL','https://miniapp.example.com:8443')
+    transport=MagicMock()
+    monkeypatch.setattr('urllib.request.urlopen',transport)
+    apply_captcha.notify_owner()
+    request=transport.call_args.args[0]
+    data=json.loads(request.data)
+    assert data['chat_id']=='123'
+    assert data['reply_markup']['inline_keyboard'][0][0]['web_app']['url']=='https://miniapp.example.com:8443'
+    assert 'captchaText' not in request.data.decode()

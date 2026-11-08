@@ -115,6 +115,9 @@ exact_errors = re.findall(r'^ERRORS: (\d+)', runner_out, re.MULTILINE)
 if exact_errors: errors = int(exact_errors[-1])
 
 STOP_REASONS = {
+    "captcha_timeout": ("⏳", "Ответ CAPTCHA не получен за три минуты. Отправленные отклики сохранены; откройте Mini App и запустите прогон снова."),
+    "captcha_cancelled": ("⏹", "Ввод CAPTCHA отменён. Отправленные отклики сохранены."),
+    "captcha_retry_limit": ("⏹", "Прогон остановлен после трёх запросов CAPTCHA. Проверьте последний результат в Mini App."),
     "no_new_vacancies": ("🔚", "Новые подходящие вакансии закончились."),
     "daily_limit": ("🛑", "Упёрлись в суточный лимит HH (200/сутки)."),
     "paused": ("⏸", "Остановлено паузой."),

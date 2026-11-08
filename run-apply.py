@@ -238,7 +238,8 @@ def main():
             return 2
         if rc != 0:
             print(f"Утилита завершилась с кодом {rc}, дальше не идём", flush=True)
-            report(total_sent, passes_done, f"tool_error:{rc}")
+            reason = {4:'captcha_timeout', 5:'captcha_cancelled', 6:'captcha_retry_limit'}.get(rc, f"tool_error:{rc}")
+            report(total_sent, passes_done, reason)
             return rc
         if limit_reached:
             print("Достигнут суточный лимит откликов", flush=True)
