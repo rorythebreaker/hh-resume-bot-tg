@@ -35,6 +35,7 @@ APPLY_RE = re.compile(
 AUTH_ERR_RE = re.compile(r"Refresh token required|Требуется авторизация")
 
 NAME_CACHE = {}
+NEXT_TG_SEND = 0.0
 
 AUTH_ALERT_COOLDOWN = 6 * 3600  # 6 часов дедупликации
 
@@ -59,6 +60,7 @@ def send_notification(text, buttons=None):
 
 
 def tg_send(text, reply_markup=None):
+    global NEXT_TG_SEND
     if not TG_TOKEN or not TG_CHAT:
         return False
     params = {
@@ -70,14 +72,30 @@ def tg_send(text, reply_markup=None):
     if reply_markup:
         params["reply_markup"] = json.dumps(reply_markup)
     data = urllib.parse.urlencode(params).encode()
-    try:
-        urllib.request.urlopen(
-            os.environ.get("TG_API_ROOT", "https://api.telegram.org").rstrip("/") + f"/bot{TG_TOKEN}/sendMessage",
-            data=data, timeout=15).read()
-        return True
-    except Exception as e:
-        print(f"TG send failed: {e}", file=sys.stderr, flush=True)
-        return False
+    for attempt in range(3):
+        delay=NEXT_TG_SEND-time.monotonic()
+        if delay>0:
+            time.sleep(delay)
+        NEXT_TG_SEND=time.monotonic()+1.1
+        try:
+            urllib.request.urlopen(
+                os.environ.get("TG_API_ROOT", "https://api.telegram.org").rstrip("/") + f"/bot{TG_TOKEN}/sendMessage",
+                data=data, timeout=15).read()
+            return True
+        except urllib.error.HTTPError as exc:
+            if exc.code==429 and attempt<2:
+                try:
+                    retry=float(json.loads(exc.read()).get('parameters',{}).get('retry_after',2))
+                    NEXT_TG_SEND=time.monotonic()+min(60,max(1,retry))
+                    continue
+                except (ValueError,TypeError):
+                    pass
+            print(f'TG send failed: HTTP {exc.code}',file=sys.stderr,flush=True)
+            return False
+        except Exception as exc:
+            print(f'TG send failed: {type(exc).__name__}',file=sys.stderr,flush=True)
+            return False
+    return False
 
 
 def read_token(hh_account):
