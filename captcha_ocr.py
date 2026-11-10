@@ -7,8 +7,14 @@ import shutil
 import subprocess
 
 
-def recognize(image):
-    if not image or len(image)>1024*1024 or not shutil.which('tesseract'):
+def recognize(image, diagnostics=None):
+    if not image or len(image)>1024*1024:
+        return None
+    from ocr_neural import model_path, recognize as recognize_neural
+    if model_path().is_file():
+        return recognize_neural(image,diagnostics=diagnostics)
+    if not shutil.which('tesseract'):
+        if diagnostics:diagnostics({'engine':'tesseract','reason':'engine_missing'})
         return None
     try:
         from PIL import Image, ImageOps
@@ -32,12 +38,14 @@ def recognize(image):
             if text:
                 confidence=float(row.get('conf','-1'))
                 if confidence<65:
+                    if diagnostics:diagnostics({'engine':'tesseract','reason':'low_confidence'})
                     return None
                 words.append(text)
         text=' '.join(words)
         if 2<=len(text)<=40 and re.fullmatch(r'[^\W_]+(?: [^\W_]+)*',text,re.UNICODE):
             return text
-    except Exception:
+    except Exception as exc:
+        if diagnostics:diagnostics({'engine':'tesseract','reason':'engine_error','error':type(exc).__name__})
         # OCR is optional: malformed images, missing models, process failures
         # and resource guards must all fall back to owner input.
         pass

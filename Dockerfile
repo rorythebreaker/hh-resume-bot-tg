@@ -6,6 +6,8 @@ RUN useradd -m -u 1000 -s /bin/bash docker
 WORKDIR /app
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY install_ocr_model.py /tmp/install_ocr_model.py
+RUN python /tmp/install_ocr_model.py
 COPY . /app
 RUN chmod 0644 /app/crontab && crontab -u docker /app/crontab \
     && mkdir -p /app/config && chown -R docker:docker /app

@@ -109,7 +109,7 @@ class BotTool(HHApplicantTool):
                     self._captcha_auto_used=True
                     from captcha_ocr import recognize
                     apply_captcha.event(pid,'ocr','Пробуем распознать CAPTCHA локально.')
-                    text=recognize(image_data)
+                    text=recognize(image_data,diagnostics=lambda value:print('OCR_DIAGNOSTIC: '+json.dumps(value),flush=True))
                     if text:
                         apply_captcha.event(pid,'submitting','OCR распознал текст. Проверяем ответ в HH.')
                         return text
