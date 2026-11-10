@@ -27,6 +27,8 @@ jobs:
         run: docker compose -f compose.production.yml config --quiet
       - name: Build Docker image
         run: docker compose build
+      - name: Local OCR container smoke
+        run: docker run --rm --network none hh-resume-bot-tg:2.5.4 python /app/tests/ocr_smoke.py
       - name: Start all three services with local Telegram substitute
         env:
           TG_BOT_TOKEN: ci-dummy

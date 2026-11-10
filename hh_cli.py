@@ -48,6 +48,7 @@ class ObservedApplyOperation(ApplyOperation):
                 atomic_write(path,json.dumps({'name':vacancy.get('name',''),
                     'employer':(vacancy.get('employer') or {}).get('name',''),
                     'description':str(details.get('description') or ''),
+                    **{key:details.get(key) for key in ('salary','salary_range','work_format','experience','schedule','work_schedule_by_days','working_hours')},
                     'complete':bool(details.get('description'))},ensure_ascii=False))
         except (OSError,ValueError,TypeError):
             logging.getLogger(__name__).warning('Could not persist vacancy notification metadata')
@@ -73,6 +74,7 @@ class ObservedApplyOperation(ApplyOperation):
 class BotTool(HHApplicantTool):
     def _application_succeeded(self):
         self._captcha_ui_count=0
+        self._captcha_auto_used=False
         if getattr(self,'_captcha_pending_api',False):
             import apply_captcha, profiles_lib
             self._captcha_pending_api=False
@@ -90,6 +92,16 @@ class BotTool(HHApplicantTool):
                 apply_captcha.event(profile, 'stopped', 'Прогон остановлен после трёх неподтверждённых CAPTCHA подряд.'+detail)
                 raise SystemExit(6)
             try:
+                pid,profile=profiles_lib.get_active_profile()
+                if profiles_lib.get_ai(profile)['captcha_ocr'] and not getattr(self,'_captcha_auto_used',False):
+                    self._captcha_auto_used=True
+                    from captcha_ocr import recognize
+                    apply_captcha.event(pid,'ocr','Пробуем распознать CAPTCHA локально.')
+                    text=recognize(image_data)
+                    if text:
+                        apply_captcha.event(pid,'submitting','OCR распознал текст. Проверяем ответ в HH.')
+                        return text
+                apply_captcha.event(pid,'waiting','Автоответ недоступен или HH запросил новую CAPTCHA. Нужен ручной ввод.')
                 return apply_captcha.request(image_data, profiles_lib.get_active_profile()[0])
             except TimeoutError:
                 raise SystemExit(4) from None

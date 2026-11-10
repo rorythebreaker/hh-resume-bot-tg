@@ -578,3 +578,61 @@ def test_incomplete_search_snippet_is_not_reported_as_full_description(tmp_path,
     monkeypatch.setattr(watcher,'read_token',lambda _:None)
     monkeypatch.setattr(watcher.urllib.request,'urlopen',Mock(side_effect=OSError('offline')))
     assert watcher.hh_get_vacancy('12345','main')==('Engineer','Example','')
+
+
+def test_ocr_only_once_then_manual_until_success(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import captcha_ocr,apply_captcha
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    recognize=Mock(return_value='automatic')
+    manual=Mock(return_value='human')
+    monkeypatch.setattr(captcha_ocr,'recognize',recognize)
+    monkeypatch.setattr(apply_captcha,'request',manual)
+    tool=BotTool()
+    assert tool._solve_captcha(b'image')=='automatic'
+    assert tool._solve_captcha(b'image')=='human'
+    recognize.assert_called_once();manual.assert_called_once()
+    tool._application_succeeded()
+    assert tool._solve_captcha(b'image')=='automatic'
+    assert recognize.call_count==2
+
+
+def test_ocr_can_be_disabled_per_profile(workspace,monkeypatch):
+    from hh_cli import BotTool
+    import captcha_ocr,apply_captcha,profiles_lib
+    profiles_lib.update_ai(workspace[1],captcha_ocr=False)
+    monkeypatch.setenv('HH_BOT_CAPTCHA_UI','1')
+    recognize=Mock();monkeypatch.setattr(captcha_ocr,'recognize',recognize)
+    monkeypatch.setattr(apply_captcha,'request',Mock(return_value='human'))
+    assert BotTool()._solve_captcha(b'image')=='human'
+    recognize.assert_not_called()
+
+
+def test_expired_blacklist_button_recovers_with_bound_confirmation(workspace,monkeypatch):
+    import tg_bot as bot
+    monkeypatch.setattr(bot,'_CURRENT_MENU',{})
+    monkeypatch.setattr(bot,'_BAN_CONFIRM',{})
+    api=Mock();monkeypatch.setattr(bot,'api_call',api)
+    ban=Mock(return_value='added');monkeypatch.setattr(bot,'cmd_ban_employer',ban)
+    monkeypatch.setattr(bot,'send',Mock())
+    bot.handle_callback('1',99,'m:expired:ban:12345')
+    ban.assert_not_called()
+    keyboard=json.loads(api.call_args.kwargs['reply_markup'])
+    action=keyboard['inline_keyboard'][0][0]['callback_data']
+    bot.handle_callback('1',99,action)
+    ban.assert_called_once_with('1','12345')
+    bot.handle_callback('1',99,action)
+    ban.assert_called_once()
+
+
+def test_vacancy_facts_format_salary_and_new_hh_fields(monkeypatch):
+    import tg_watcher as watcher
+    monkeypatch.setattr(watcher,'VACANCY_FACTS',{('main','123'):{
+        'salary_range':{'from':150000,'to':200000,'currency':'RUR','gross':False},
+        'work_format':[{'name':'Remote'}],'experience':{'name':'1-3 years'},
+        'work_schedule_by_days':[{'name':'5/2'}],'working_hours':[{'name':'8 hours'}]}})
+    facts=dict(watcher.vacancy_facts('123','main'))
+    values=' '.join(facts.values())
+    assert '150 000' in values and '200 000' in values
+    assert 'Remote' in values and '1-3 years' in values and '5/2, 8 hours' in values
+    assert len(watcher.vacancy_facts('unknown','main'))==4

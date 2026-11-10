@@ -35,6 +35,14 @@ APPLY_RE = re.compile(
 AUTH_ERR_RE = re.compile(r"Refresh token required|Требуется авторизация")
 
 NAME_CACHE = {}
+VACANCY_FACTS = {}
+FACT_FIELDS = ('salary','salary_range','work_format','experience','schedule','work_schedule_by_days','working_hours')
+
+
+def remember_facts(key, data):
+    VACANCY_FACTS[key]={field:data.get(field) for field in FACT_FIELDS}
+    if len(VACANCY_FACTS)>500:
+        del VACANCY_FACTS[next(iter(VACANCY_FACTS))]
 NEXT_TG_SEND = 0.0
 
 AUTH_ALERT_COOLDOWN = 6 * 3600  # 6 часов дедупликации
@@ -113,6 +121,7 @@ def hh_get_vacancy(vid, hh_account):
     metadata=CONFIG_DIR/hh_account/'.vacancy-meta'/(str(vid)+'.json')
     try:
         stored=json.loads(metadata.read_text(encoding='utf-8'))
+        remember_facts(key,stored)
         if stored.get('name'):
             fallback=(stored['name'], stored.get('employer',''), stored.get('description',''))
             if stored.get('complete',bool(stored.get('description'))):
@@ -131,6 +140,7 @@ def hh_get_vacancy(vid, hh_account):
         try:
             with urllib.request.urlopen(request,timeout=15) as response:
                 data=json.loads(response.read())
+            remember_facts(key,data)
             result=(data.get('name') or fallback[0],(data.get('employer') or {}).get('name') or fallback[1],data.get('description') or fallback[2])
             if result[0] and data.get('description'):
                 NAME_CACHE[key]=result
@@ -281,6 +291,38 @@ def description_chunks(text, limit=3200):
         text=text[end:]
 
 
+def vacancy_facts(vid, account):
+    data=VACANCY_FACTS.get((account,str(vid)),{})
+    def names(value):
+        if isinstance(value,list):
+            return ', '.join(filter(None,(names(item) for item in value)))
+        if isinstance(value,dict):
+            return str(value.get('name') or value.get('id') or '')
+        return str(value or '')
+    salary=data.get('salary_range') or data.get('salary') or {}
+    if not isinstance(salary,dict):
+        salary={}
+    amounts=[]
+    if salary.get('from') is not None:
+        amounts.append('\u043e\u0442 '+format(salary['from'],',').replace(',',' '))
+    if salary.get('to') is not None:
+        amounts.append('\u0434\u043e '+format(salary['to'],',').replace(',',' '))
+    pay=' '.join(amounts)
+    if pay:
+        currency=salary.get('currency') or ''
+        if isinstance(currency,dict): currency=currency.get('code') or currency.get('name') or ''
+        pay+=' '+{'RUR':'\u20bd','RUB':'\u20bd','USD':'$','EUR':'\u20ac'}.get(currency,currency)
+        if salary.get('gross') is True: pay+=' \u0434\u043e \u0432\u044b\u0447\u0435\u0442\u0430 \u043d\u0430\u043b\u043e\u0433\u043e\u0432'
+        elif salary.get('gross') is False: pay+=' \u043d\u0430 \u0440\u0443\u043a\u0438'
+    schedule=names(data.get('work_schedule_by_days')) or names(data.get('schedule'))
+    hours=names(data.get('working_hours'))
+    if hours: schedule+=(', ' if schedule else '')+hours
+    return [('\u0417\u0430\u0440\u043f\u043b\u0430\u0442\u0430',pay or '\u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d\u0430'),
+            ('\u0424\u043e\u0440\u043c\u0430\u0442',names(data.get('work_format')) or '\u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'),
+            ('\u041e\u043f\u044b\u0442',names(data.get('experience')) or '\u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d'),
+            ('\u0413\u0440\u0430\u0444\u0438\u043a',schedule or '\u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d')]
+
+
 def notify_apply(vid, hh_account):
     name, employer, description = hh_get_vacancy(vid, hh_account)
     name=name.encode("utf-16-le")[:400].decode("utf-16-le",errors="ignore")
@@ -297,9 +339,11 @@ def notify_apply(vid, hh_account):
         f"💼 {title}\n"
         f"🔗 <a href=\"{url}\">{url}</a>"
     )
+    text+='\n\n'+'\n'.join(html.escape(label+': '+value) for label,value in vacancy_facts(vid,hh_account))
     from html_bubbles import plain_text
     description=plain_text(re.sub(r'</(?:p|li|ul|ol|h[1-6])\s*>','\n',description,flags=re.I)).strip()
-    chunks=list(description_chunks(description))
+    budget=max(200,3900-len(plain_text(text).encode('utf-16-le'))//2)
+    chunks=list(description_chunks(description,min(3200,budget)))
     if chunks:
         text+='\n\n<blockquote expandable>'+html.escape(chunks[0])+'</blockquote>'
     else:

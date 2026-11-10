@@ -23,6 +23,7 @@ DEFAULT_LETTER = "letter_default.txt"
 # режимы соответствуют --ai-filter {heavy,light,custom} в 1.8.26.
 AI_FILTER_MODES = ("", "heavy", "light", "custom")
 DEFAULT_AI = {
+    "captcha_ocr": True,
     "enabled": False,        # --use-ai: генерация сопроводительных писем
     "filter": "",            # --ai-filter: отсев вакансий до отклика
     "filter_prompt": "",     # --ai-filter-prompt: нужен только для режима custom
@@ -243,6 +244,7 @@ def get_ai(profile):
         ai["rate_limit"] = DEFAULT_AI["rate_limit"]
     ai["enabled"] = bool(ai["enabled"])
     ai["dry_run"] = bool(ai["dry_run"])
+    ai["captcha_ocr"] = bool(ai["captcha_ocr"])
     return ai
 
 

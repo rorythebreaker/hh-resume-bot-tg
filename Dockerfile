@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONUTF8=1 PIP_ROOT_USER_ACTION=ignore
-RUN apt-get update && apt-get install -y --no-install-recommends cron ca-certificates tzdata sqlite3 procps util-linux openssl \
+RUN apt-get update && apt-get install -y --no-install-recommends cron ca-certificates tzdata sqlite3 procps util-linux openssl tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1000 -s /bin/bash docker
 WORKDIR /app

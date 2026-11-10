@@ -2054,6 +2054,7 @@ def build_menu_ai():
         "title": title,
         "rows": [
             [(f"⚡ Письма: {_ai_flag(ai['enabled'])}", "ai:toggle")],
+            [(f"🔎 OCR CAPTCHA: {_ai_flag(ai['captcha_ocr'])}", "ai:ocr")],
             [(f"🎯 Фильтр: {AI_FILTER_TITLES.get(ai['filter'], ai['filter'])}", "menu:ai_filter")],
             [("✏️ Промпт фильтра", "cmd:/ai_filter_prompt")],
             [("✏️ Промпт письма", "cmd:/ai_message_prompt")],
@@ -2638,6 +2639,27 @@ def _fit_rows(rows):
 
 
 _CURRENT_MENU = {}
+_BAN_CONFIRM = {}
+
+
+def refresh_ban_confirmation(chat_id, vacancy_id):
+    """Recover a legacy notification action without trusting an expired menu."""
+    import secrets
+    pid,profile=profiles_lib.get_active_profile()
+    if not profile:
+        send(chat_id,'Нет активного профиля.'); return
+    now=time.monotonic()
+    for key,item in list(_BAN_CONFIRM.items()):
+        if item[3]<now:
+            _BAN_CONFIRM.pop(key,None)
+    token=secrets.token_hex(8)
+    _BAN_CONFIRM[token]=(str(chat_id),pid,vacancy_id,now+300)
+    label=html.escape(profile.get('display_name') or pid)
+    api_call('sendMessage',chat_id=chat_id,
+        text=f'Добавить работодателя вакансии {vacancy_id} в чёрный список профиля «{label}»?',
+        parse_mode='HTML',reply_markup=json.dumps({'inline_keyboard':[[
+            {'text':'Добавить','callback_data':'banconfirm:'+token},
+            {'text':'Отмена','callback_data':'bancancel:'+token}]]}))
 
 def open_mini_app(chat_id, text='Панель управления доступна в приложении.'):
     return api_call('sendMessage', chat_id=chat_id, text=text, parse_mode='HTML',
@@ -2764,10 +2786,20 @@ def handle_callback(chat_id, message_id, data):
         _, token, action = data.split(':', 2)
         current = _CURRENT_MENU.get(str(chat_id))
         if not current or current[0] != token or current[1] != profiles_lib.get_active_profile()[0] or current[2] < time.monotonic():
+            if re.fullmatch(r'ban:[0-9]+',action):
+                refresh_ban_confirmation(chat_id,action.split(':',1)[1]); return
             send(chat_id, 'This menu expired. Open /menu again.'); return
         if action.startswith(('cmd:', 'manual:', 'runconfirm:', 'runcancel:', 'del:', 'setres:')):
             _CURRENT_MENU.pop(str(chat_id), None)
         data = action
+    if data.startswith(('banconfirm:','bancancel:')):
+        item=_BAN_CONFIRM.get(data.split(':',1)[1])
+        if not item or item[0]!=str(chat_id) or item[1]!=profiles_lib.get_active_profile()[0] or item[3]<time.monotonic():
+            send(chat_id,'Подтверждение устарело или профиль изменился. Нажмите кнопку вакансии ещё раз.'); return
+        _BAN_CONFIRM.pop(data.split(':',1)[1],None)
+        if data.startswith('bancancel:'):
+            send(chat_id,'Добавление в чёрный список отменено.'); return
+        send(chat_id,cmd_ban_employer(chat_id,item[2])); return
     if data == 'menu:schedule':
         send_menu(chat_id, schedule_menu(), edit_message_id=message_id); return
     if data.startswith('manual:'):
@@ -2804,7 +2836,7 @@ def handle_callback(chat_id, message_id, data):
         send(chat_id, reply)
         send_menu(chat_id, build_menu_main(), edit_message_id=message_id)
         return
-    if data in ("ai:toggle", "ai:dry") or data.startswith("aifilter:"):
+    if data in ("ai:toggle", "ai:dry", "ai:ocr") or data.startswith("aifilter:"):
         pid, profile = profiles_lib.get_active_profile()
         if not profile:
             send_menu(chat_id, build_menu_profile(), edit_message_id=message_id)
@@ -2813,6 +2845,8 @@ def handle_callback(chat_id, message_id, data):
         try:
             if data == "ai:toggle":
                 profiles_lib.update_ai(pid, enabled=not ai["enabled"])
+            elif data == "ai:ocr":
+                profiles_lib.update_ai(pid, captcha_ocr=not ai['captcha_ocr'])
             elif data == "ai:dry":
                 profiles_lib.update_ai(pid, dry_run=not ai["dry_run"])
             else:
