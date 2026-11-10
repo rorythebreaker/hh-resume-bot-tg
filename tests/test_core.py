@@ -648,3 +648,10 @@ def test_unconfirmed_captcha_gets_terminal_status_when_run_finishes(workspace):
     assert apply_captcha.status(pid)['state']=='finished'
     assert 'HTTP' not in apply_captcha.status(pid)['message']
     assert not tool._captcha_pending_api
+
+
+def test_finishing_run_without_captcha_does_not_read_profile(monkeypatch):
+    from hh_cli import BotTool
+    import profiles_lib
+    monkeypatch.setattr(profiles_lib,'get_active_profile',Mock(side_effect=AssertionError('No CAPTCHA to finish')))
+    BotTool()._captcha_run_finished()

@@ -75,6 +75,8 @@ class ObservedApplyOperation(ApplyOperation):
 
 class BotTool(HHApplicantTool):
     def _captcha_run_finished(self):
+        if not getattr(self,'_captcha_pending_api',False):
+            return
         import apply_captcha, profiles_lib
         pid=profiles_lib.get_active_profile()[0]
         latest=apply_captcha.status(pid)
