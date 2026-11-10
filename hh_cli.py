@@ -26,6 +26,25 @@ class ObservedApplyOperation(ApplyOperation):
             yield vacancy
 
     def _process_vacancy(self, vacancy, resume, placeholders, seen_employers, state):
+        # Retain the public metadata already fetched by the application worker.
+        # The notification watcher may not have a usable HH token of its own.
+        try:
+            from storage import atomic_write
+            from hh_compat import validate_account
+            import profiles_lib
+            _, profile=profiles_lib.get_active_profile()
+            vid=str(vacancy.get('id',''))
+            if vid.isdigit() and profile:
+                account=validate_account(profile.get('hh_account','main'))
+                path=Path(os.environ.get('CONFIG_DIR','/app/config'))/account/'.vacancy-meta'/(vid+'.json')
+                atomic_write(path,json.dumps({'name':vacancy.get('name',''),
+                    'employer':(vacancy.get('employer') or {}).get('name',''),
+                    'description':str(vacancy.get('description') or '\n'.join(
+                        str((vacancy.get('snippet') or {}).get(key) or '')
+                        for key in ('requirement','responsibility')))[:50000],
+                    'complete':bool(vacancy.get('description'))},ensure_ascii=False))
+        except (OSError,ValueError,TypeError):
+            logging.getLogger(__name__).warning('Could not persist vacancy notification metadata')
         before = state.applied_count
         try:
             result = super()._process_vacancy(vacancy, resume, placeholders, seen_employers, state)

@@ -59,11 +59,12 @@ async function update(route='/api/state',body,quiet=false){
  if(busy)return;
  busy=true;
  if(!quiet){document.querySelectorAll('button').forEach(b=>b.disabled=true);main.classList.add('is-loading');}
- try{current=await api(route,body);render();}
+ try{const next=await api(route,body);if(quiet&&JSON.stringify(next)===JSON.stringify(current))return;current=next;render(quiet);}
  catch(error){if(!quiet)toast(error.message);}
  finally{busy=false;main.classList.remove('is-loading');document.querySelectorAll('button').forEach(button=>button.disabled=false);}
 }
-function render(){
+function render(preserveScroll=false){
+ const pageY=window.scrollY||0,feedY=main.querySelector?.('.messages')?.scrollTop||0;
  const data=current;if(!data)return;if(data.section)view=data.section;
  main.textContent='';status.textContent=data.paused?'На паузе':'Готов к работе';status.className='status'+(data.paused?' paused':'');
  if(demo)main.appendChild(element('div','Предпросмотр · пример данных, действия не выполняются','demo-label'));
@@ -108,6 +109,7 @@ function render(){
    item.appendChild(copy);item.appendChild(element('div',message.text));list.appendChild(item);
   }feed.appendChild(list);main.appendChild(feed);
  }
+ if(preserveScroll){const feed=main.querySelector?.('.messages');if(feed)feed.scrollTop=feedY;window.scrollTo?.(0,pageY);}
  document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
 }
 document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;update('/api/view',{name:view});});

@@ -86,35 +86,41 @@ def read_token(hh_account):
 
 
 def hh_get_vacancy(vid, hh_account):
-    if vid in NAME_CACHE:
-        return NAME_CACHE[vid]
-    token = read_token(hh_account)
-    if not token:
-        NAME_CACHE[vid] = ("", "")
-        return NAME_CACHE[vid]
-    req = urllib.request.Request(
-        f"https://api.hh.ru/vacancies/{vid}",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "hh-applicant-tool/watcher",
-            "Accept": "application/json",
-        },
-    )
+    from hh_compat import validate_account
+    validate_account(hh_account)
+    if not str(vid).isdigit():
+        return '', '', ''
+    key=(hh_account,str(vid))
+    fallback=('', '', '')
+    metadata=CONFIG_DIR/hh_account/'.vacancy-meta'/(str(vid)+'.json')
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        name = data.get("name") or ""
-        employer = (data.get("employer") or {}).get("name") or ""
-        result = (name, employer)
-        NAME_CACHE[vid] = result
-        if len(NAME_CACHE) > 500:
-            for k in list(NAME_CACHE.keys())[:100]:
-                NAME_CACHE.pop(k, None)
-        return result
-    except Exception as e:
-        print(f"HH API failed for vacancy {vid}: {e}", file=sys.stderr, flush=True)
-        NAME_CACHE[vid] = ("", "")
-        return NAME_CACHE[vid]
+        stored=json.loads(metadata.read_text(encoding='utf-8'))
+        if stored.get('name'):
+            fallback=(stored['name'], stored.get('employer',''), stored.get('description',''))
+            if stored.get('complete',bool(stored.get('description'))):
+                return fallback
+    except (OSError,ValueError,TypeError):
+        pass
+    if key in NAME_CACHE:
+        return NAME_CACHE[key]
+    token=read_token(hh_account)
+    for authenticated in ([True,False] if token else [False]):
+        headers={'User-Agent':'hh-resume-bot-tg/2.5.4','Accept':'application/json'}
+        if authenticated:
+            headers['Authorization']='Bearer '+token
+        request=urllib.request.Request('https://api.hh.ru/vacancies/'+str(vid),headers=headers)
+        try:
+            with urllib.request.urlopen(request,timeout=15) as response:
+                data=json.loads(response.read())
+            result=(data.get('name') or fallback[0],(data.get('employer') or {}).get('name') or fallback[1],data.get('description') or fallback[2])
+            if result[0]:
+                NAME_CACHE[key]=result
+                if len(NAME_CACHE)>500:
+                    del NAME_CACHE[next(iter(NAME_CACHE))]
+            return result
+        except Exception as exc:
+            print(f'Vacancy metadata unavailable for {vid}: {type(exc).__name__}',flush=True)
+    return fallback
 
 
 # =================== Приглашения и здоровье аккаунтов ===================
@@ -238,7 +244,9 @@ def save_state(state):
 
 
 def notify_apply(vid, hh_account):
-    name, employer = hh_get_vacancy(vid, hh_account)
+    name, employer, description = hh_get_vacancy(vid, hh_account)
+    name=name.encode("utf-16-le")[:400].decode("utf-16-le",errors="ignore")
+    employer=employer.encode("utf-16-le")[:400].decode("utf-16-le",errors="ignore")
     url = f"https://hh.ru/vacancy/{vid}"
     if name:
         title = html.escape(name)
@@ -251,6 +259,13 @@ def notify_apply(vid, hh_account):
         f"💼 {title}\n"
         f"🔗 <a href=\"{url}\">{url}</a>"
     )
+    from html_bubbles import plain_text
+    description=plain_text(re.sub(r'</(?:p|li|ul|ol|h[1-6])\s*>','\n',description,flags=re.I)).strip()
+    if description:
+        excerpt=description.encode('utf-16-le')[:5600].decode('utf-16-le',errors='ignore')
+        if excerpt!=description:
+            excerpt+='\n\u041f\u043e\u043b\u043d\u043e\u0435 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u2014 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u043d\u0430 \u0432\u0430\u043a\u0430\u043d\u0441\u0438\u044e.'
+        text+='\n\n<blockquote expandable>'+html.escape(excerpt)+'</blockquote>'
     # Кнопка ведёт в бота: работодателя он определит по вакансии через API
     # и добавит в чёрный список активного профиля.
     send_notification(text, [("👁 Отслеживать", f"track:{vid}"),

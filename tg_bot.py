@@ -618,12 +618,7 @@ def cmd_search_show():
     search = profile.get("search", "")
     if not search:
         return "❌ Поисковый запрос пуст. Задай кнопкой «✏️ Изменить запрос»."
-    display = profile.get("display_name") or pid
-    return (
-        f"🔍 <b>Запрос профиля «{html.escape(display)}»</b> ({len(search)} симв.):\n\n"
-        f"<pre>{html.escape(search)}</pre>\n\n"
-        f"Документация по языку запросов HH: hh.ru/article/1175"
-    )
+    return f"<pre>{html.escape(search)}</pre>"
 
 
 def cmd_search_set_prompt():

@@ -4,6 +4,7 @@ class Element{
  constructor(tag='div'){this.tagName=tag;this.children=[];this.value='';this.dataset={};this.className='';this.hidden=false;this.disabled=false;this._text='';this.classList={add:()=>{},remove:()=>{},toggle:()=>{}};}
  set textContent(text){this._text=String(text);this.children=[];}get textContent(){return this._text;}
  appendChild(child){this.children.push(child);return child;}click(){if(this.onclick)return this.onclick();}
+ querySelector(selector){return flatten(this).find(el=>el.className.split(' ').includes(selector.slice(1)))||null;}
  matches(selector){return selector.split(',').includes(this.tagName);}
 }
 const flatten=el=>[el,...el.children.flatMap(flatten)];
@@ -14,9 +15,10 @@ async function boot({demo=false,initData='',response=sample}={}){
  const elements={main,status,tabs,toast},calls=[];
  const document={hidden:false,activeElement:null,getElementById:id=>elements[id],createElement:tag=>new Element(tag),querySelectorAll:selector=>selector==='[data-view]'?buttons:flatten(main).concat(buttons).filter(el=>el.tagName==='button')};
  const sdk={initData,ready(){},expand(){},onEvent(){}};
- vm.runInNewContext(source,{window:{Telegram:{WebApp:sdk}},location:{hostname:demo?'127.0.0.1':'hh.example.com',search:demo?'?preview=1':''},URLSearchParams,document,setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>response};}});
+ const timers=[];const browserWindow={Telegram:{WebApp:sdk},scrollY:0,scrollTo:(x,y)=>browserWindow.scrollY=y};
+ vm.runInNewContext(source,{window:browserWindow,location:{hostname:demo?'127.0.0.1':'hh.example.com',search:demo?'?preview=1':''},URLSearchParams,document,setInterval:fn=>{timers.push(fn);return 0;},setTimeout:()=>0,clearTimeout:()=>{},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>response};}});
  for(let i=0;i<6;i++)await Promise.resolve();
- return {main,status,tabs,buttons,calls};
+ return {main,status,tabs,buttons,calls,timers,browserWindow,setResponse:value=>response=value};
 }
 test('production shell requires Telegram identity',async()=>{
  const ui=await boot();assert.equal(ui.tabs.hidden,true);assert.equal(ui.calls.length,0);assert.match(flatten(ui.main).map(x=>x.textContent).join(' '),/Telegram/);
@@ -53,4 +55,18 @@ test('actions disable every button during request',async()=>{
  const ui=await boot({initData:'signed-context'});
  const action=flatten(ui.main).find(el=>el.tagName==='button'&&el.textContent==='Start');
  action.click();assert.ok(ui.buttons.every(button=>button.disabled));
+});
+
+
+test('background polling keeps response scroll position when unchanged or changed',async()=>{
+ const response={...sample,messages:[{id:1,text:'long reply'}]};
+ const ui=await boot({initData:'signed-context',response});
+ const oldFeed=ui.main.querySelector('.messages');oldFeed.scrollTop=180;ui.browserWindow.scrollY=420;
+ ui.timers[0]();for(let i=0;i<10;i++)await Promise.resolve();
+ assert.equal(ui.main.querySelector('.messages'),oldFeed);
+ ui.setResponse({...response,stats:{today:2,free:198}});
+ ui.timers[0]();for(let i=0;i<10;i++)await Promise.resolve();
+ assert.notEqual(ui.main.querySelector('.messages'),oldFeed);
+ assert.equal(ui.main.querySelector('.messages').scrollTop,180);
+ assert.equal(ui.browserWindow.scrollY,420);
 });

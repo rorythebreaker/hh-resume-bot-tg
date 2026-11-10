@@ -449,7 +449,7 @@ def test_watcher_notifies_successful_manual_apply_while_schedule_paused(tmp_path
     import logging
     monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
     monkeypatch.setattr(watcher,'STATE_FILE',tmp_path/'state.json')
-    monkeypatch.setattr(watcher,'hh_get_vacancy',Mock(return_value=('Engineer','Example')))
+    monkeypatch.setattr(watcher,'hh_get_vacancy',Mock(return_value=('Engineer','Example','Description')))
     send=Mock(return_value=True)
     monkeypatch.setattr(watcher,'send_notification',send)
     (tmp_path/'.paused').touch()
@@ -505,3 +505,43 @@ def test_bot_reads_same_main_fallback_log(tmp_path,monkeypatch):
     monkeypatch.setattr(bot,'active_hh_account',lambda:'main')
     legacy=tmp_path/'log.txt';legacy.write_text('existing')
     assert bot.get_active_tool_log()==legacy
+
+
+def test_vacancy_notification_uses_saved_name_and_collapsed_description(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    from storage import atomic_write
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    atomic_write(tmp_path/'main'/'.vacancy-meta'/'12345.json',json.dumps({
+        'name':'Engineer & admin','employer':'Example','description':'<p>Linux &amp; Windows</p><b>Details</b>'}))
+    monkeypatch.setattr(watcher,'read_token',Mock(side_effect=AssertionError('Metadata should be local')))
+    send=Mock();monkeypatch.setattr(watcher,'send_notification',send)
+    watcher.notify_apply('12345','main')
+    text=send.call_args.args[0]
+    assert 'Engineer &amp; admin' in text
+    assert '<blockquote expandable>' in text
+    assert 'Linux &amp; Windows' in text
+    assert '<p>' not in text
+
+
+def test_vacancy_metadata_failure_is_not_cached_forever(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(watcher,'NAME_CACHE',{})
+    monkeypatch.setattr(watcher,'read_token',lambda _:None)
+    response=MagicMock()
+    response.__enter__.return_value.read.return_value=json.dumps({'name':'Recovered','description':'Details'}).encode()
+    fetch=Mock(side_effect=[OSError('offline'),response])
+    monkeypatch.setattr(watcher.urllib.request,'urlopen',fetch)
+    assert watcher.hh_get_vacancy('12345','main')==('','','')
+    assert watcher.hh_get_vacancy('12345','main')==('Recovered','','Details')
+
+
+def test_search_show_returns_only_actual_query(workspace):
+    import tg_bot as bot
+    import html
+    _,pid=workspace
+    query='(linux OR devops) AND infrastructure'
+    import profiles_lib
+    profiles_lib.update_profile(pid,search=query)
+    assert bot.cmd_search_show()=='<pre>'+html.escape(query)+'</pre>'
