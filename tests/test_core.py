@@ -398,7 +398,7 @@ def test_captcha_diagnostics_keep_flags_without_secret_body(workspace,monkeypatc
         'errors':[{'type':'forbidden','value':'captcha_required'}]}))
     assert not BotTool()._send_captcha('private-answer','private-key','private-state',
         referer_url='https://hh.ru/account/captcha',backurl='hh://applicant/captchaSuccessBackUrl',session=session)
-    message=apply_captcha.status(workspace[1])['message']
+    message=apply_captcha.status(workspace[1])['diagnostics']
     assert 'isBot=true' in message
     assert 'captcha_required' in message
     assert 'private' not in message
@@ -636,3 +636,15 @@ def test_vacancy_facts_format_salary_and_new_hh_fields(monkeypatch):
     assert '150 000' in values and '200 000' in values
     assert 'Remote' in values and '1-3 years' in values and '5/2, 8 hours' in values
     assert len(watcher.vacancy_facts('unknown','main'))==4
+
+
+def test_unconfirmed_captcha_gets_terminal_status_when_run_finishes(workspace):
+    from hh_cli import BotTool
+    import apply_captcha
+    pid=workspace[1]
+    tool=BotTool();tool._captcha_pending_api=True
+    apply_captcha.event(pid,'submitting','Waiting for protected API',diagnostics='HTTP 302')
+    tool._captcha_run_finished()
+    assert apply_captcha.status(pid)['state']=='finished'
+    assert 'HTTP' not in apply_captcha.status(pid)['message']
+    assert not tool._captcha_pending_api

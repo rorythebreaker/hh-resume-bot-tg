@@ -1461,7 +1461,7 @@ def cmd_log():
         captcha_state = apply_captcha.status(profiles_lib.get_active_profile()[0])
         out = "\n".join(tail.splitlines()[-30:])[-3000:]
         if captcha_state:
-            out = "CAPTCHA_STATUS: " + captcha_state["message"] + "\n\n" + out
+            out = "CAPTCHA_STATUS: " + captcha_state["message"] + "\n" + captcha_state.get('diagnostics','') + "\n\n" + out
         return f"📜 <b>Хвост лога:</b>\n\n<pre>{html.escape(redact(out))}</pre>"
     except Exception as e:
         return f"⚠️ {html.escape(str(e))}"

@@ -79,10 +79,14 @@ def status(profile):
     return None
 
 
-def event(profile, state, message):
+def event(profile, state, message, diagnostics=None):
     value={'profile':profile,'state':state,'message':message,'time':time.time()}
+    if diagnostics:
+        value['diagnostics']=diagnostics
     atomic_write(str(location())+'.status',json.dumps(value))
     print('CAPTCHA_STATUS: '+message,flush=True)
+    if diagnostics:
+        print('CAPTCHA_DIAGNOSTIC: '+diagnostics,flush=True)
 
 
 def notify_owner():

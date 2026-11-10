@@ -73,6 +73,7 @@ class Session:
         self.image = None
         self.message_id = secrets.randbelow(1000000000) + 1000000000
         self.event_id = 0
+        self.captcha_seen = None
 
     def add_text(self, value):
         with self.lock:
@@ -95,6 +96,7 @@ class MiniApp:
         self.bot, self.token, self.owner, self.clock = bot, token, str(owner), clock
         self.url = public_url(url) if url else ''
         self.sessions = {}
+        self.captcha_dismissed = {}
         self.lock = context.OPERATION_LOCK
 
     def session(self, init_data):
@@ -115,6 +117,14 @@ class MiniApp:
         bot = self.bot
         pid, profile = bot.profiles_lib.get_active_profile()
         with session.lock:
+            captcha_status=apply_captcha.status(pid)
+            signature=(pid,captcha_status.get('time'),captcha_status.get('state'),captcha_status.get('message')) if captcha_status else None
+            if signature and signature!=session.captcha_seen and signature!=self.captcha_dismissed.get(pid):
+                message=captcha_status['message']
+                if '; HTTP ' in message:
+                    message=message.split('; HTTP ',1)[0]
+                session.add_text(message)
+                session.captcha_seen=signature
             if session.menu is None or session.profile != pid:
                 session.set_menu(bot.build_menu_main())
                 session.profile = pid
@@ -146,7 +156,6 @@ class MiniApp:
             return {'section':session.section, 'menu':{'title':plain_text(session.menu['title']),'rows':rows},
                     'profile':{'name':(profile or {}).get('display_name') or pid or 'Создайте профиль',
                                'account':(profile or {}).get('hh_account','—')},
-                    'captcha_status':apply_captcha.status(pid),
                     'paused':bot.is_paused(), 'stats':{'free':free,'today':today},
                     'messages':list(session.messages),
                     'input':{'action':action,'nonce':session.input_nonce,
@@ -162,6 +171,10 @@ class MiniApp:
                 pass
             elif route == '/api/messages/clear':
                 with session.lock:
+                    pid=bot.profiles_lib.get_active_profile()[0]
+                    latest=apply_captcha.status(pid)
+                    session.captcha_seen=(pid,latest.get('time'),latest.get('state'),latest.get('message')) if latest else None
+                    self.captcha_dismissed[pid]=session.captcha_seen
                     session.messages.clear()
             elif route == '/api/view':
                 name = (body or {}).get('name')

@@ -342,3 +342,19 @@ def test_captcha_result_survives_large_log_truncation(app):
     text=app.bot.cmd_log()
     assert 'HH rejected CAPTCHA; HTTP 403' in text
     assert len(text)<4000
+
+
+def test_captcha_status_is_clearable_in_shared_response_feed(app):
+    import apply_captcha
+    pid=app.bot.profiles_lib.get_active_profile()[0]
+    apply_captcha.event(pid,'submitting','Checking response',diagnostics='HTTP 302; Location absent')
+    raw=signed();first=app.request(raw,'/api/state')
+    assert 'captcha_status' not in first
+    assert [m['text'] for m in first['messages']]==['Checking response']
+    assert app.request(raw,'/api/state')['messages']==first['messages']
+    assert app.request(raw,'/api/messages/clear',{})['messages']==[]
+    assert app.request(raw,'/api/state')['messages']==[]
+    reopened=signed(extra={'query_id':'reopened'})
+    assert app.request(reopened,'/api/state')['messages']==[]
+    apply_captcha.event(pid,'accepted','Application sent')
+    assert [m['text'] for m in app.request(raw,'/api/state')['messages']]==['Application sent']

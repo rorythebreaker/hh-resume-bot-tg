@@ -18,6 +18,8 @@ class ObservedApplyOperation(ApplyOperation):
         try:
             return super().run(tool, args)
         finally:
+            if isinstance(tool,BotTool):
+                tool._captcha_run_finished()
             print('CORE_METRICS: ' + json.dumps(self.metrics), flush=True)
 
     def _get_vacancies(self, resume_id):
@@ -72,6 +74,14 @@ class ObservedApplyOperation(ApplyOperation):
                 self.tool._application_succeeded()
 
 class BotTool(HHApplicantTool):
+    def _captcha_run_finished(self):
+        import apply_captcha, profiles_lib
+        pid=profiles_lib.get_active_profile()[0]
+        latest=apply_captcha.status(pid)
+        if getattr(self,'_captcha_pending_api',False) and latest and latest.get('state') in ('submitting','ocr'):
+            apply_captcha.event(pid,'finished','Прогон завершён. Ответ CAPTCHA был отправлен, но прохождение этой проверки отдельно не подтверждено HH.')
+        self._captcha_pending_api=False
+
     def _application_succeeded(self):
         self._captcha_ui_count=0
         self._captcha_auto_used=False
@@ -185,11 +195,13 @@ class BotTool(HHApplicantTool):
         else:
             details.append('Location отсутствует')
         profile=profiles_lib.get_active_profile()[0]
-        apply_captcha.event(profile,'submitting' if can_retry else 'rejected',
-            ('Ответ CAPTCHA отправлен. Проверяем результат повторным запросом к HH' if can_retry else 'HH не подтвердил принятие CAPTCHA')+
+        diagnostics=(
             '; HTTP '+str(response.status_code)+
             '; переход '+('успешный' if accepted else 'отсутствует или неожиданный')+
             '; '+ '; '.join(details))
+        apply_captcha.event(profile,'submitting' if can_retry else 'rejected',
+            'Ответ CAPTCHA отправлен. Продолжаем проверку в HH.' if can_retry else 'HH не подтвердил CAPTCHA. Если появится новая картинка, введите её текст вручную.',
+            diagnostics=diagnostics)
         return can_retry
 
     def _assign_args(self, args):
