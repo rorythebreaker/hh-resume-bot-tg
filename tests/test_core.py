@@ -545,3 +545,36 @@ def test_search_show_returns_only_actual_query(workspace):
     import profiles_lib
     profiles_lib.update_profile(pid,search=query)
     assert bot.cmd_search_show()=='<pre>'+html.escape(query)+'</pre>'
+
+
+def test_notification_preserves_entire_long_description_across_messages(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    from storage import atomic_write
+    from html_bubbles import plain_text
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    description=('Linux & Windows '+chr(0x1f680)+'\n')*800+'FINAL END'
+    import html
+    atomic_write(tmp_path/'main'/'.vacancy-meta'/'12345.json',json.dumps({
+        'name':'Engineer','employer':'Example','description':html.escape(description),'complete':True}))
+    send=Mock();monkeypatch.setattr(watcher,'send_notification',send)
+    watcher.notify_apply('12345','main')
+    messages=[call.args[0] for call in send.call_args_list]
+    assert len(messages)>1
+    recovered=''
+    for message in messages:
+        assert len(plain_text(message).encode('utf-16-le'))//2<=4096
+        block=message.split('<blockquote expandable>',1)[1].split('</blockquote>',1)[0]
+        recovered+=plain_text(block)
+    assert recovered==description
+
+
+def test_incomplete_search_snippet_is_not_reported_as_full_description(tmp_path,monkeypatch):
+    import tg_watcher as watcher
+    from storage import atomic_write
+    monkeypatch.setattr(watcher,'CONFIG_DIR',tmp_path)
+    monkeypatch.setattr(watcher,'NAME_CACHE',{})
+    atomic_write(tmp_path/'main'/'.vacancy-meta'/'12345.json',json.dumps({
+        'name':'Engineer','employer':'Example','description':'Truncated snippet...','complete':False}))
+    monkeypatch.setattr(watcher,'read_token',lambda _:None)
+    monkeypatch.setattr(watcher.urllib.request,'urlopen',Mock(side_effect=OSError('offline')))
+    assert watcher.hh_get_vacancy('12345','main')==('Engineer','Example','')

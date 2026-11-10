@@ -99,6 +99,7 @@ def hh_get_vacancy(vid, hh_account):
             fallback=(stored['name'], stored.get('employer',''), stored.get('description',''))
             if stored.get('complete',bool(stored.get('description'))):
                 return fallback
+            fallback=(fallback[0],fallback[1],'')
     except (OSError,ValueError,TypeError):
         pass
     if key in NAME_CACHE:
@@ -113,7 +114,7 @@ def hh_get_vacancy(vid, hh_account):
             with urllib.request.urlopen(request,timeout=15) as response:
                 data=json.loads(response.read())
             result=(data.get('name') or fallback[0],(data.get('employer') or {}).get('name') or fallback[1],data.get('description') or fallback[2])
-            if result[0]:
+            if result[0] and data.get('description'):
                 NAME_CACHE[key]=result
                 if len(NAME_CACHE)>500:
                     del NAME_CACHE[next(iter(NAME_CACHE))]
@@ -243,6 +244,25 @@ def save_state(state):
         print(f"state save failed: {e}", file=sys.stderr, flush=True)
 
 
+def description_chunks(text, limit=3200):
+    """Split on paragraph/word boundaries without dropping any text (UTF-16)."""
+    while text:
+        units=0
+        end=0
+        for char in text:
+            width=2 if ord(char)>0xffff else 1
+            if units+width>limit:
+                break
+            units+=width
+            end+=1
+        if end<len(text):
+            boundary=max(text.rfind('\n',0,end),text.rfind(' ',0,end))
+            if boundary>end//2:
+                end=boundary+1
+        yield text[:end]
+        text=text[end:]
+
+
 def notify_apply(vid, hh_account):
     name, employer, description = hh_get_vacancy(vid, hh_account)
     name=name.encode("utf-16-le")[:400].decode("utf-16-le",errors="ignore")
@@ -261,15 +281,19 @@ def notify_apply(vid, hh_account):
     )
     from html_bubbles import plain_text
     description=plain_text(re.sub(r'</(?:p|li|ul|ol|h[1-6])\s*>','\n',description,flags=re.I)).strip()
-    if description:
-        excerpt=description.encode('utf-16-le')[:5600].decode('utf-16-le',errors='ignore')
-        if excerpt!=description:
-            excerpt+='\n\u041f\u043e\u043b\u043d\u043e\u0435 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u2014 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u043d\u0430 \u0432\u0430\u043a\u0430\u043d\u0441\u0438\u044e.'
-        text+='\n\n<blockquote expandable>'+html.escape(excerpt)+'</blockquote>'
+    chunks=list(description_chunks(description))
+    if chunks:
+        text+='\n\n<blockquote expandable>'+html.escape(chunks[0])+'</blockquote>'
+    else:
+        text+='\n\nПолное описание пока недоступно: HH не вернул текст вакансии.'
     # Кнопка ведёт в бота: работодателя он определит по вакансии через API
     # и добавит в чёрный список активного профиля.
     send_notification(text, [("👁 Отслеживать", f"track:{vid}"),
                              ("🚫 В чёрный список", f"ban:{vid}")])
+    for index,chunk in enumerate(chunks[1:],2):
+        send_notification(f'<b>Описание вакансии — часть {index}/{len(chunks)}</b>\n'
+                          f'<a href="{url}">{url}</a>\n\n'
+                          '<blockquote expandable>'+html.escape(chunk)+'</blockquote>')
 
 
 def notify_auth_required(hh_account, state):
