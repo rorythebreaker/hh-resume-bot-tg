@@ -32,6 +32,7 @@ def _post_with_captcha(account, path, fields):
     from hh_cli import BotTool
     from hh_applicant_tool.tool import BaseNamespace
     from hh_applicant_tool.api.errors import ApiError
+    import requests
     tool = BotTool()
     args = tool._parser.parse_args(['--config-dir', os.environ.get('CONFIG_DIR', '/app/config'),
         '--profile', account, '--no-use-ai', 'whoami'], namespace=BaseNamespace())
@@ -39,9 +40,13 @@ def _post_with_captcha(account, path, fields):
     previous = os.environ.get('HH_BOT_CAPTCHA_UI')
     os.environ['HH_BOT_CAPTCHA_UI'] = '1'
     try:
-        result = tool.api_client.post(path, fields or {})
+        client = tool.api_client
+        client.max_retries = 1  # Never replay ambiguous application POSTs.
+        result = client.post(path, fields or {})
         tool._application_succeeded()
         return result
+    except requests.RequestException:
+        raise HHAPIError(0, 'Соединение с HH прервано; результат отправки неизвестен. Проверьте отклики перед повтором.') from None
     except ApiError as exc:
         status = getattr(exc, 'status_code', 0)
         raise HHAPIError(status, error_message(status, getattr(exc, '_data', None))) from None
