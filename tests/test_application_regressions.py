@@ -34,3 +34,24 @@ def test_captcha_success_event():
     source = (ROOT / "hh_cli.py").read_text(encoding="utf-8")
     assert "pending = getattr(self,'_captcha_pending_api',False)" in source
     assert "if pending:" in source
+
+
+def test_relation_skip_preserves_upstream_decision(monkeypatch):
+    from hh_cli import ObservedApplyOperation
+    from hh_applicant_tool.operations.apply_vacancies import Operation
+    monkeypatch.setattr(Operation, '_should_skip_vacancy', lambda self, vacancy: True)
+    operation = object.__new__(ObservedApplyOperation)
+    operation.metrics = {'skip_reasons': {}}
+    vacancy = {'id': '123', 'relations': ['got_response']}
+    assert operation._should_skip_vacancy(vacancy) is True
+    assert operation.metrics['skip_reasons'] == {'relations': 1}
+
+
+def test_relation_skip_never_overrides_upstream_allow(monkeypatch):
+    from hh_cli import ObservedApplyOperation
+    from hh_applicant_tool.operations.apply_vacancies import Operation
+    monkeypatch.setattr(Operation, '_should_skip_vacancy', lambda self, vacancy: False)
+    operation = object.__new__(ObservedApplyOperation)
+    operation.metrics = {'skip_reasons': {}}
+    assert operation._should_skip_vacancy({'id': '123', 'relations': []}) is False
+    assert operation.metrics['skip_reasons'] == {}
