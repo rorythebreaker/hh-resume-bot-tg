@@ -14,7 +14,7 @@ from security import SecretFilter
 class ObservedApplyOperation(ApplyOperation):
     """Count upstream decisions, without duplicating its application logic."""
     def run(self, tool, args):
-        self.metrics = {'found': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+        self.metrics = {'found': 0, 'sent': 0, 'skipped': 0, 'errors': 0, 'skip_reasons': {}}
         try:
             return super().run(tool, args)
         finally:
@@ -26,6 +26,31 @@ class ObservedApplyOperation(ApplyOperation):
         for vacancy in super()._get_vacancies(resume_id=resume_id):
             self.metrics['found'] += 1
             yield vacancy
+
+    def _should_skip_vacancy(self, vacancy):
+        """Explain upstream skip decisions without changing duplicate protection."""
+        skipped = super()._should_skip_vacancy(vacancy)
+        if not skipped:
+            return False
+        relations = vacancy.get('relations') or []
+        if relations:
+            reason = 'relations'
+            # Do not assume arbitrary relation values permit a fresh application.
+            safe_values = sorted(str(value) for value in relations)
+            logging.getLogger(__name__).info(
+                'VACANCY_SKIP_REASON: id=%s reason=%s relations=%s',
+                vacancy.get('id', '?'), reason, json.dumps(safe_values, ensure_ascii=False))
+        elif vacancy.get('archived'):
+            reason = 'archived'
+        elif vacancy.get('has_test') and self.skip_tests:
+            reason = 'test'
+        elif vacancy.get('response_url'):
+            reason = 'redirect'
+        else:
+            reason = 'other'
+        counts = self.metrics.setdefault('skip_reasons', {})
+        counts[reason] = counts.get(reason, 0) + 1
+        return True
 
     def _process_vacancy(self, vacancy, resume, placeholders, seen_employers, state):
         # Retain the public metadata already fetched by the application worker.
