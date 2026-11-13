@@ -10,7 +10,8 @@ def test_manual_post_uses_captcha_aware_client():
     tree = ast.parse(source)
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     assert "_post_with_captcha" in functions
-    assert "tool.api_client.post(path, fields or {})" in source
+    assert "client.post(path, fields or {})" in source
+    assert "client.max_retries = 1" in source
     assert "if method.upper() == 'POST':" in source
     assert "return _post_with_captcha(account, path, fields)" in source
 
