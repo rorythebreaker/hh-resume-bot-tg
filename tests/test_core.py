@@ -89,11 +89,20 @@ def test_get_retries_are_bounded(monkeypatch):
     assert err.value.status == 503 and call.call_count == 3
 
 def test_post_never_retries_ambiguous_result(monkeypatch):
-    monkeypatch.setattr(hh_api,'read_access_token',lambda *a:'TOKEN')
-    call = Mock(side_effect=urllib.error.URLError('lost'))
-    monkeypatch.setattr(hh_api.urllib.request,'urlopen',call)
-    with pytest.raises(hh_api.HHAPIError): hh_api.request('main','/negotiations','POST',{'vacancy_id':'1'})
-    assert call.call_count == 1
+    import requests
+    from hh_cli import BotTool
+    from hh_applicant_tool.tool import BaseNamespace
+    client = Mock()
+    client.post.side_effect = requests.ConnectionError('lost')
+    tool = Mock()
+    tool.api_client = client
+    tool._parser.parse_args.return_value = BaseNamespace()
+    monkeypatch.setattr(BotTool, '__new__', staticmethod(lambda cls: tool))
+    with pytest.raises(hh_api.HHAPIError) as err:
+        hh_api.request('main', '/negotiations', 'POST', {'vacancy_id': '1'})
+    assert err.value.status == 0
+    assert client.max_retries == 1
+    client.post.assert_called_once_with('/negotiations', {'vacancy_id': '1'})
 
 def test_refresh_once_after_401(monkeypatch):
     monkeypatch.setattr(hh_api,'read_access_token',lambda *a:'TOKEN')
