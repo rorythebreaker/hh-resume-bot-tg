@@ -95,7 +95,6 @@ posts_ok = len(re.findall(r"201 POST https://api\.hh\.ru/negotiations", log))
 # The runner's aggregate is authoritative; avoid mixing counters.
 sent = max(sent, posts_ok)
 
-runner_sent = re.findall(r'^Отправлено:\s*(\d+)\s*
 
 # Считаем ошибки, но игнорируем безвредные:
 # - BrokenPipeError: артефакт SIGPIPE при завершении pipe (tee), не настоящая ошибка
