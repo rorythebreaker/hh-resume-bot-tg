@@ -27,7 +27,43 @@ def error_message(status, payload=None):
     }
     return f'HTTP {status}: ' + messages.get(status, 'временная ошибка HH' if status >= 500 else 'ошибка запроса HH')
 
+def _post_with_captcha(account, path, fields):
+    """Delegate CAPTCHA challenge handling to upstream's API client."""
+    from hh_cli import BotTool
+    from hh_applicant_tool.tool import BaseNamespace
+    from hh_applicant_tool.api.errors import ApiError
+    tool = BotTool()
+    args = tool._parser.parse_args(['--config-dir', os.environ.get('CONFIG_DIR', '/app/config'),
+        '--profile', account, '--no-use-ai', 'whoami'], namespace=BaseNamespace())
+    tool._assign_args(args)
+    previous = os.environ.get('HH_BOT_CAPTCHA_UI')
+    os.environ['HH_BOT_CAPTCHA_UI'] = '1'
+    try:
+        result = tool.api_client.post(path, fields or {})
+        tool._application_succeeded()
+        return result
+    except ApiError as exc:
+        status = getattr(exc, 'status_code', 0)
+        raise HHAPIError(status, error_message(status, getattr(exc, '_data', None))) from None
+    except SystemExit as exc:
+        reasons = {4: 'Время ожидания CAPTCHA истекло.', 5: 'Ввод CAPTCHA отменён.',
+                   6: 'Превышено число попыток CAPTCHA.'}
+        raise HHAPIError(403, reasons.get(exc.code, 'Проверка CAPTCHA прервана.')) from None
+    finally:
+        tool._captcha_run_finished()
+        try:
+            tool.save_cookies()
+        except (OSError, ValueError):
+            pass
+        if previous is None:
+            os.environ.pop('HH_BOT_CAPTCHA_UI', None)
+        else:
+            os.environ['HH_BOT_CAPTCHA_UI'] = previous
+
+
 def request(account, path, method='GET', fields=None):
+    if method.upper() == 'POST':
+        return _post_with_captcha(account, path, fields)
     root = os.environ.get('CONFIG_DIR', '/app/config')
     refreshed = False
     for attempt in range(3):

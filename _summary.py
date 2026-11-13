@@ -92,9 +92,127 @@ sent = int(sent_match_list[-1]) if sent_match_list else 0
 
 # Альтернативный счёт — по реальным POST 201 (более точно для текущего прогона)
 posts_ok = len(re.findall(r"201 POST https://api\.hh\.ru/negotiations", log))
-# Берём максимум — что точнее
+# The runner's aggregate is authoritative; avoid mixing counters.
 sent = max(sent, posts_ok)
 
+runner_sent = re.findall(r'^Отправлено:\s*(\d+)\s*
+
+# Считаем ошибки, но игнорируем безвредные:
+# - BrokenPipeError: артефакт SIGPIPE при завершении pipe (tee), не настоящая ошибка
+# - SystemExit, KeyboardInterrupt — штатное завершение
+# Остаются: настоящие ERROR из лога утилиты, неожиданные Exception
+all_errors = re.findall(r"^.*\[E\]|^.*ERROR|^.*Exception", log, re.MULTILINE)
+errors = sum(
+    1 for line in all_errors
+    if "BrokenPipeError" not in line
+    and "Broken pipe" not in line
+    and "SystemExit" not in line
+    and "KeyboardInterrupt" not in line
+)
+
+# Причина остановки и число проходов — их печатает run-apply.py в конце
+exact_errors = re.findall(r'^ERRORS: (\d+)', runner_out, re.MULTILINE)
+if exact_errors: errors = int(exact_errors[-1])
+
+STOP_REASONS = {
+    "captcha_timeout": ("⏳", "Ответ CAPTCHA не получен за три минуты. Отправленные отклики сохранены; откройте Mini App и запустите прогон снова."),
+    "captcha_cancelled": ("⏹", "Ввод CAPTCHA отменён. Отправленные отклики сохранены."),
+    "captcha_retry_limit": ("⏹", "Прогон остановлен после трёх неподтверждённых CAPTCHA подряд. Проверьте последний результат в Mini App."),
+    "no_new_vacancies": ("🔚", "Новые подходящие вакансии закончились."),
+    "daily_limit": ("🛑", "Упёрлись в суточный лимит HH (200/сутки)."),
+    "paused": ("⏸", "Остановлено паузой."),
+    "completed": ("ℹ️", "Прогон завершён."),
+    "max_responses": ("🎯", "Достигнут лимит откликов за один запуск (--max-responses). Увеличьте его в фильтрах профиля."),
+    "scan_completed": ("ℹ️", "Обработан настроенный диапазон страниц поиска; другие вакансии могут оставаться."),
+    "scan_no_applications": ("ℹ️", "В просмотренном диапазоне новых откликов нет."),
+    "limit_reported": ("⚠️", "Ядро сообщило об ограничении откликов; проверьте журнал."),
+    "hh_verification_required": ("STOP", "Остановлено: HH требует проверку или ограничил доступ."),
+    "max_passes": ("🔁", "Исчерпан потолок проходов (APPLY_MAX_PASSES). "
+                         "Лимит ещё есть — стоит запустить снова."),
+    "dry_run": ("🧪", "Тестовый прогон: отклики не отправлялись."),
+}
+markers = runner_out or log
+stop_match = re.findall(r"^STOP_REASON:\s*(\S+)", markers, re.MULTILINE)
+stop_reason = stop_match[-1] if stop_match else ""
+passes_match = re.findall(r"^PASSES:\s*(\d+)", markers, re.MULTILINE)
+passes_done = int(passes_match[-1]) if passes_match else 0
+
+if stop_reason.startswith("tool_error"):
+    code = stop_reason.split(":", 1)[-1]
+    stop_icon, stop_text = "❌", f"Утилита завершилась с кодом {code} — прогон прерван."
+else:
+    stop_icon, stop_text = STOP_REASONS.get(stop_reason, ("", ""))
+
+# Детектим исчерпание лимита HH (дневной лимит ~200 откликов)
+limit_hit = bool(re.search(r"Лимит откликов.*исчерпан|Достигли лимита на отклики", log))
+
+if limit_hit:
+    icon = "🛑"
+    status_line = "<b>Лимит HH исчерпан</b> (200/сутки)\nДождись сброса окна (~24ч)."
+elif RC == 0 and errors == 0:
+    icon = "✅"
+    status_line = None
+elif errors > 0:
+    icon = "⚠️"
+    status_line = None
+else:
+    icon = "❌"
+    status_line = None
+
+lines = [
+    "<b>Сводка прогона:</b>",
+]
+if profile_display:
+    lines.append(f"👤 Профиль: <b>{profile_display}</b>")
+lines.extend([
+    f"📤 Отправлено: <b>{sent}</b>",
+    f"🔍 Попыток: {tried}",
+    f"🐛 Ошибок: {errors}",
+] + ([f"🔁 Проходов: {passes_done}"] if passes_done > 1 else []) + [
+    f"Exit: {RC}",
+    f"🕒 Сейчас: {datetime.now().strftime('%Y-%m-%d %H:%M')} МСК",
+])
+if stop_text:
+    lines.append("")
+    lines.append(f"{stop_icon} {stop_text}")
+if status_line and stop_reason != "daily_limit":
+    lines.append("")
+    lines.append(status_line)
+
+if RC != 0 or errors:
+    import html
+    from security import redact
+    diagnostics = [line for line in log.splitlines() if not re.match(r'^(?:ERRORS|CORE_METRICS):', line) and re.search(r'ERROR|Exception|Traceback|\[E\]|403 POST|429 POST|[Cc]aptcha', line)]
+    if diagnostics:
+        lines.append('<pre>' + html.escape(redact('\n'.join(diagnostics[-3:]))[-1000:]) + '</pre>')
+
+msg = "\n".join(lines)
+
+if os.environ.get("BOT_TRANSPORT", "telegram").strip().lower() == "vk":
+    try:
+        sys.path.insert(0, "/app")
+        import vk_transport
+        vk = vk_transport.VKTransport()
+        vk.send_text(vk.peer_id, msg)
+    except Exception as e:
+        print(f"vk summary failed: {e}")
+    sys.exit(0)
+
+try:
+    data = urllib.parse.urlencode({
+        "chat_id": TG_CHAT,
+        "text": msg,
+        "parse_mode": "HTML",
+    }).encode()
+    urllib.request.urlopen(
+        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+        data=data, timeout=15
+    ).read()
+except Exception as e:
+    print(f"tg summary failed: {e}")
+, runner_out, re.MULTILINE)
+if runner_sent:
+    sent = int(runner_sent[-1])
 tried = len(re.findall(r"Пробуем откликнуться", log))
 
 # Считаем ошибки, но игнорируем безвредные:

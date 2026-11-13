@@ -85,9 +85,10 @@ class BotTool(HHApplicantTool):
         self._captcha_pending_api=False
 
     def _application_succeeded(self):
+        pending = getattr(self,'_captcha_pending_api',False)
         self._captcha_ui_count=0
         self._captcha_auto_used=False
-        if getattr(self,'_captcha_pending_api',False):
+        if pending:
             import apply_captcha, profiles_lib
             self._captcha_pending_api=False
             apply_captcha.event(profiles_lib.get_active_profile()[0], 'accepted',

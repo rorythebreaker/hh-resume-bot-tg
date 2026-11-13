@@ -56,6 +56,8 @@ def report(total_sent, passes_done, stop_reason):
 def run_pass(args):
     """Один проход: (отправлено, лимит, блокировка HH, код)."""
     sent = 0
+    post_count = 0
+    core_seen = False
     limit_reached = False
     blocked = False
     try:
@@ -78,8 +80,9 @@ def run_pass(args):
                 counts = json.loads(line.split(': ', 1)[1])
                 for key in METRICS: METRICS[key] = counts[key]
                 sent = counts['sent']
+                core_seen = True
             if POST_OK_RE.search(line):
-                sent += 1
+                post_count += 1
             if LIMIT_RE.search(line):
                 limit_reached = True
             if BLOCK_RE.search(line):
@@ -94,7 +97,7 @@ def run_pass(args):
             rc = proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill(); rc = proc.wait()
-    return sent, limit_reached, blocked, rc
+    return (sent if core_seen else post_count), limit_reached, blocked, rc
 
 
 def main():
@@ -159,6 +162,11 @@ def main():
 
     max_responses = max(1, f["max_responses"])
     args.extend(["--max-responses", str(max_responses)])
+    pages = int(os.environ.get("APPLY_TOTAL_PAGES", "20"))
+    if not 1 <= pages <= 20:
+        print("ERROR: APPLY_TOTAL_PAGES must be between 1 and 20", file=sys.stderr)
+        return 1
+    args.extend(["--total-pages", str(pages)])
     if f["experience"]:
         args.extend(["--experience", f["experience"]])
     if f["schedule"]:
@@ -209,7 +217,8 @@ def main():
 
     # Тестовый прогон повторять бессмысленно: отклики не отправляются, и любой
     # следующий проход выдал бы ровно тот же список.
-    max_passes = 1  # Upstream paginates and enforces max_responses in one run.
+    max_passes = 1  # Upstream paginates; repeating identical pages is not progress.
+    print(f'CONFIGURED_MAX_RESPONSES: {max_responses}', flush=True)
     total_sent = 0
     passes_done = 0
     stop_reason = "completed"
@@ -242,18 +251,22 @@ def main():
             report(total_sent, passes_done, reason)
             return rc
         if limit_reached:
-            print("Достигнут суточный лимит откликов", flush=True)
-            stop_reason = "daily_limit"
+            stop_reason = "limit_reported"
+            break
+        if total_sent >= max_responses and not ai["dry_run"]:
+            stop_reason = "max_responses"
             break
         if sent_this_pass == 0:
-            print("Новых подходящих вакансий не осталось", flush=True)
-            stop_reason = "no_new_vacancies"
+            print("В просмотренном диапазоне новых откликов нет", flush=True)
+            stop_reason = "scan_no_applications"
             break
         if attempt < max_passes:
             time.sleep(PASS_DELAY)
 
     if ai["dry_run"]:
         stop_reason = "dry_run"
+    elif stop_reason == "completed":
+        stop_reason = "scan_completed"
     report(total_sent, passes_done, stop_reason)
     return 0
 
