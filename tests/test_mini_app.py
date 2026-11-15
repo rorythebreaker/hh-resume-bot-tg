@@ -122,7 +122,7 @@ def test_background_notifications_still_go_to_chat_and_prompts_stay_in_app(app):
     assert app.bot.api_call.call_args.kwargs['text']=='Background summary'
 
 def test_async_manual_preview_stays_in_app(app,monkeypatch):
-    monkeypatch.setattr(app.bot,'hh_get_strict',lambda path:{'id':'123456','name':'Developer'} if '/vacancies/' in path else {})
+    monkeypatch.setattr(manual_flow.hh_api,'request',lambda account,path,**kwargs:{'id':'123456','name':'Developer'} if '/vacancies/' in path else {})
     raw=signed();app.request(raw,'/api/view',{'name':'ctl'})
     session=app.session(raw)
     state=app.request(raw,'/api/action',{'id':action_id(session,'cmd:/apply_links')})
