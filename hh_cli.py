@@ -53,6 +53,13 @@ class ObservedApplyOperation(ApplyOperation):
         return True
 
     def _process_vacancy(self, vacancy, resume, placeholders, seen_employers, state):
+        # Reject known-ineligible vacancies using search-result fields before
+        # requesting full descriptions or writing notification metadata.
+        # Keep upstream's predicate as the authority for duplicate protection.
+        if not state.do_apply or self._should_skip_vacancy(vacancy):
+            self.metrics['skipped'] += 1
+            self.metrics['pre_skipped'] = self.metrics.get('pre_skipped', 0) + 1
+            return
         # Retain the public metadata already fetched by the application worker.
         # The notification watcher may not have a usable HH token of its own.
         try:
