@@ -55,3 +55,22 @@ def test_relation_skip_never_overrides_upstream_allow(monkeypatch):
     operation.metrics = {'skip_reasons': {}}
     assert operation._should_skip_vacancy({'id': '123', 'relations': []}) is False
     assert operation.metrics['skip_reasons'] == {}
+
+
+def test_captcha_terminal_status_notifies_owner(tmp_path, monkeypatch):
+    import apply_captcha
+    monkeypatch.setenv('CONFIG_DIR', str(tmp_path))
+    notified = []
+    monkeypatch.setattr(apply_captcha, 'notify_result', notified.append)
+    apply_captcha.event('profile', 'finished', 'Проверка завершена без подтверждения.')
+    assert notified == ['Проверка завершена без подтверждения.']
+    assert apply_captcha.status('profile')['state'] == 'finished'
+
+
+def test_captcha_waiting_does_not_send_result(tmp_path, monkeypatch):
+    import apply_captcha
+    monkeypatch.setenv('CONFIG_DIR', str(tmp_path))
+    notified = []
+    monkeypatch.setattr(apply_captcha, 'notify_result', notified.append)
+    apply_captcha.event('profile', 'waiting', 'Введите CAPTCHA.')
+    assert notified == []
