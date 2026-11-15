@@ -105,7 +105,8 @@ def test_pre_filter_skips_known_ineligible_before_description_request(monkeypatc
 
     operation = object.__new__(ObservedApplyOperation)
     operation.metrics = {'sent': 0, 'skipped': 0, 'skip_reasons': {}}
-    operation.api_client = Mock()
+    client = Mock()
+    monkeypatch.setattr(ObservedApplyOperation, 'api_client', property(lambda self: client))
     monkeypatch.setattr(Operation, '_should_skip_vacancy',
                         lambda self, vacancy: bool(vacancy.get('relations')))
     state = SimpleNamespace(do_apply=True, applied_count=0)
@@ -113,7 +114,7 @@ def test_pre_filter_skips_known_ineligible_before_description_request(monkeypatc
         {'id': '123', 'alternate_url': 'https://hh.ru/vacancy/123',
          'relations': ['got_rejection']},
         {}, {}, set(), state)
-    operation.api_client.get.assert_not_called()
+    client.get.assert_not_called()
     assert operation.metrics['skipped'] == 1
     assert operation.metrics['pre_skipped'] == 1
     assert operation.metrics['skip_reasons'] == {'relations': 1}
@@ -128,7 +129,8 @@ def test_pre_filter_allows_eligible_vacancy_into_upstream(monkeypatch):
 
     operation = object.__new__(ObservedApplyOperation)
     operation.metrics = {'sent': 0, 'skipped': 0, 'errors': 0, 'skip_reasons': {}}
-    operation.api_client = Mock()
+    client = Mock()
+    monkeypatch.setattr(ObservedApplyOperation, 'api_client', property(lambda self: client))
     monkeypatch.setattr(profiles_lib, 'get_active_profile', lambda: ('p', None))
     monkeypatch.setattr(Operation, '_should_skip_vacancy',
                         lambda self, vacancy: False)
