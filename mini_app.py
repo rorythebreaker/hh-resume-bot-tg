@@ -15,6 +15,8 @@ from html_bubbles import plain_text
 from security import redact
 import mini_app_context as context
 import apply_captcha
+import scoring
+import profiles_lib
 
 ASSETS = Path(__file__).with_name('mini_app')
 MAX_BODY = 65536
@@ -161,7 +163,8 @@ class MiniApp:
                     'input':{'action':action,'nonce':session.input_nonce,
                              'secret':bool(action and (action.startswith('aicfg:api_key') or action=='auth_input'))} if action else None,
                     'captcha':session.image if action and (action=='auth_input' or action.startswith('apply_captcha:')) else None,
-                    'notifications':'Сводки и уведомления продолжают приходить в чат бота.'}
+                    'notifications':'Сводки и уведомления продолжают приходить в чат бота.',
+                    'scoring': profiles_lib.get_scoring(profile)}
 
     def request(self, init_data, route, body=None):
         session = self.session(init_data)
@@ -176,13 +179,47 @@ class MiniApp:
                     session.captcha_seen=(pid,latest.get('time'),latest.get('state'),latest.get('message')) if latest else None
                     self.captcha_dismissed[pid]=session.captcha_seen
                     session.messages.clear()
+            elif route == '/api/scoring/list':
+                pid, profile = bot.profiles_lib.get_active_profile()
+                if not pid or not profiles_lib.get_scoring(profile)['enabled']:
+                    raise ValueError('Скоринг выключен.')
+                state = self.snapshot(session)
+                state['scoring_queue'] = scoring.list_evaluations(pid)
+                state['scoring_feedback_stats'] = scoring.feedback_stats(pid)
+                return state
+            elif route == '/api/scoring/config':
+                pid, profile = bot.profiles_lib.get_active_profile()
+                if not pid or not profile:
+                    raise ValueError('Нет активного профиля.')
+                values = body or {}
+                allowed = {'enabled', 'auto_threshold', 'review_threshold', 'rules'}
+                if not values or set(values) - allowed:
+                    raise ValueError('Недопустимые параметры скоринга.')
+                profiles_lib.update_scoring(pid, **values)
+            elif route == '/api/scoring/feedback':
+                pid, profile = bot.profiles_lib.get_active_profile()
+                if not pid or not profiles_lib.get_scoring(profile)['enabled']:
+                    raise ValueError('Скоринг выключен.')
+                values = body or {}
+                if set(values) != {'vacancy_id', 'decision', 'reason'}:
+                    raise ValueError('Некорректная оценка вакансии.')
+                if values['reason'] is not None and (
+                    not isinstance(values['reason'], str) or len(values['reason']) > 100):
+                    raise ValueError('Некорректная причина.')
+                scoring.add_feedback(pid, values['vacancy_id'], values['decision'], values['reason'])
+                state = self.snapshot(session)
+                state['scoring_queue'] = scoring.list_evaluations(pid)
+                state['scoring_feedback_stats'] = scoring.feedback_stats(pid)
+                return state
             elif route == '/api/view':
                 name = (body or {}).get('name')
-                if name not in ('main','ctl','view','profile','filters','ai','schedule'):
+                if name not in ('main','ctl','view','profile','filters','ai','schedule','scoring'):
                     raise ValueError('Неизвестный раздел.')
-                menu = bot.schedule_menu() if name=='schedule' else bot.menu_by_name(name)
+                if name == 'scoring' and not profiles_lib.get_scoring(bot.profiles_lib.get_active_profile()[1])['enabled']:
+                    raise ValueError('Скоринг выключен.')
+                menu = bot.schedule_menu() if name=='schedule' else bot.menu_by_name('main' if name=='scoring' else name)
                 session.set_menu(menu)
-                session.section = name if name in ('profile','filters','ai','ctl') else ('ctl' if name=='schedule' else 'main')
+                session.section = name if name in ('profile','filters','ai','ctl','scoring') else ('ctl' if name=='schedule' else 'main')
                 session.profile = bot.profiles_lib.get_active_profile()[0]
             elif route == '/api/action':
                 with session.lock:
