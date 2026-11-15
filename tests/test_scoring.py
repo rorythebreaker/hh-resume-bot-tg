@@ -53,7 +53,7 @@ def test_shadow_scoring_failure_does_not_stop_upstream(monkeypatch):
     operation = object.__new__(ObservedApplyOperation)
     operation.metrics = {"sent": 0, "skipped": 0, "errors": 0, "skip_reasons": {}}
     monkeypatch.setattr(Operation, "_should_skip_vacancy", lambda *args: False)
-    monkeypatch.setattr(profiles_lib, "get_active_profile", lambda: ("p", {"hh_account": "main"}))
+    monkeypatch.setattr(profiles_lib, "get_active_profile", lambda: ("p", {"hh_account": "main", "scoring": {"enabled": True}}))
     monkeypatch.setattr(scoring, "save_evaluation", lambda *args: (_ for _ in ()).throw(OSError("disk full")))
     seen = []
     monkeypatch.setattr(Operation, "_process_vacancy", lambda self, v, *args: seen.append(v["id"]))
