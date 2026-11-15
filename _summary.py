@@ -99,6 +99,11 @@ if runner_sent:
     sent = int(runner_sent[-1])
 
 
+# Attempts are derived from the runner's own counter when present.
+# A missing counter must never prevent the end-of-run notification.
+tried_matches = re.findall(r"^TRIED:\\s*(\\d+)\\s*$", runner_out, re.MULTILINE)
+tried = int(tried_matches[-1]) if tried_matches else 0
+
 # Считаем ошибки, но игнорируем безвредные:
 # - BrokenPipeError: артефакт SIGPIPE при завершении pipe (tee), не настоящая ошибка
 # - SystemExit, KeyboardInterrupt — штатное завершение
