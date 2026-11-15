@@ -91,7 +91,7 @@ class ObservedApplyOperation(ApplyOperation):
             import scoring
             import profiles_lib
             pid, profile = profiles_lib.get_active_profile()
-            if pid and profile:
+            if pid and profile and profiles_lib.get_scoring(profile)['enabled']:
                 score_result = scoring.evaluate(details if 'details' in locals() else vacancy, profile)
                 scoring.save_evaluation(pid, details if 'details' in locals() else vacancy, score_result)
                 self.metrics['scored'] = self.metrics.get('scored', 0) + 1
