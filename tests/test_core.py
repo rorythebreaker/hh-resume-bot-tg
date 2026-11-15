@@ -299,7 +299,8 @@ def test_observed_upstream_skip_counter(monkeypatch):
     from hh_applicant_tool.operations.apply_vacancies import Operation
     operation=ObservedApplyOperation()
     operation.metrics={'found':0,'sent':0,'skipped':0,'errors':0}
-    state=SimpleNamespace(applied_count=0)
+    state=SimpleNamespace(applied_count=0, do_apply=True)
+    monkeypatch.setattr(Operation,'_should_skip_vacancy',lambda *args:False)
     monkeypatch.setattr(Operation,'_process_vacancy',lambda *args:None)
     operation._process_vacancy({}, {}, {}, set(), state)
     assert operation.metrics['skipped']==1 and operation.metrics['sent']==0
