@@ -95,3 +95,50 @@ def test_manual_summary_tracks_unprocessed_items_independently_of_errors():
     source = (ROOT / 'manual_flow.py').read_text(encoding='utf-8')
     assert 'remaining = max(0, len(vacancies) - processed)' in source
     assert "summary += ' Причина остановки: '" in source
+
+
+def test_pre_filter_skips_known_ineligible_before_description_request(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from hh_cli import ObservedApplyOperation
+    from hh_applicant_tool.operations.apply_vacancies import Operation
+
+    operation = object.__new__(ObservedApplyOperation)
+    operation.metrics = {'sent': 0, 'skipped': 0, 'skip_reasons': {}}
+    operation.api_client = Mock()
+    monkeypatch.setattr(Operation, '_should_skip_vacancy',
+                        lambda self, vacancy: bool(vacancy.get('relations')))
+    state = SimpleNamespace(do_apply=True, applied_count=0)
+    operation._process_vacancy(
+        {'id': '123', 'alternate_url': 'https://hh.ru/vacancy/123',
+         'relations': ['got_rejection']},
+        {}, {}, set(), state)
+    operation.api_client.get.assert_not_called()
+    assert operation.metrics['skipped'] == 1
+    assert operation.metrics['pre_skipped'] == 1
+    assert operation.metrics['skip_reasons'] == {'relations': 1}
+
+
+def test_pre_filter_allows_eligible_vacancy_into_upstream(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    import profiles_lib
+    from hh_cli import ObservedApplyOperation
+    from hh_applicant_tool.operations.apply_vacancies import Operation
+
+    operation = object.__new__(ObservedApplyOperation)
+    operation.metrics = {'sent': 0, 'skipped': 0, 'errors': 0, 'skip_reasons': {}}
+    operation.api_client = Mock()
+    monkeypatch.setattr(profiles_lib, 'get_active_profile', lambda: ('p', None))
+    monkeypatch.setattr(Operation, '_should_skip_vacancy',
+                        lambda self, vacancy: False)
+    processed = []
+    monkeypatch.setattr(Operation, '_process_vacancy',
+                        lambda self, vacancy, *args: processed.append(vacancy['id']))
+    state = SimpleNamespace(do_apply=True, applied_count=0)
+    operation._process_vacancy(
+        {'id': '124', 'alternate_url': 'https://hh.ru/vacancy/124',
+         'relations': []},
+        {}, {}, set(), state)
+    assert processed == ['124']
+    assert operation.metrics.get('pre_skipped', 0) == 0
