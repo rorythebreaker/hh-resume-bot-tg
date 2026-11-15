@@ -99,10 +99,18 @@ if runner_sent:
     sent = int(runner_sent[-1])
 
 
-# Attempts are derived from the runner's own counter when present.
-# A missing counter must never prevent the end-of-run notification.
-tried_matches = re.findall(r"^TRIED:\\s*(\\d+)\\s*$", runner_out, re.MULTILINE)
-tried = int(tried_matches[-1]) if tried_matches else 0
+# Count processed candidates from the core's structured metrics, if available.
+# Do not claim zero attempts when the runner did not emit a counter.
+import json
+core_metrics = re.findall(r"^CORE_METRICS:\\s*(\\{[^\\n]*\\})", runner_out, re.MULTILINE)
+tried = None
+if core_metrics:
+    try:
+        found = json.loads(core_metrics[-1]).get("found")
+        if type(found) is int and found >= 0:
+            tried = found
+    except (ValueError, TypeError):
+        pass
 
 # Считаем ошибки, но игнорируем безвредные:
 # - BrokenPipeError: артефакт SIGPIPE при завершении pipe (tee), не настоящая ошибка
@@ -173,7 +181,7 @@ if profile_display:
     lines.append(f"👤 Профиль: <b>{profile_display}</b>")
 lines.extend([
     f"📤 Отправлено: <b>{sent}</b>",
-    f"🔍 Попыток: {tried}",
+    *([f"🔍 Обработано вакансий: {tried}"] if tried is not None else []),
     f"🐛 Ошибок: {errors}",
 ] + ([f"🔁 Проходов: {passes_done}"] if passes_done > 1 else []) + [
     f"Exit: {RC}",
