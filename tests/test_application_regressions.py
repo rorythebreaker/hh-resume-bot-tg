@@ -83,3 +83,15 @@ def test_manual_get_uses_captcha_aware_client():
     api_source = (ROOT / 'hh_api.py').read_text(encoding='utf-8')
     assert "result = client.get(path)" in api_source
     assert "captcha_ui and method.upper() == 'GET'" in api_source
+
+
+def test_manual_confirmation_rechecks_vacancy_with_captcha_client():
+    source = (ROOT / 'manual_flow.py').read_text(encoding='utf-8')
+    assert source.count("hh_api.request(profile['hh_account'], f'/vacancies/{vid}', captcha_ui=True)") == 2
+    assert "bot.hh_get_strict(f'/vacancies/{vid}')" not in source
+
+
+def test_manual_summary_tracks_unprocessed_items_independently_of_errors():
+    source = (ROOT / 'manual_flow.py').read_text(encoding='utf-8')
+    assert 'remaining = max(0, len(vacancies) - processed)' in source
+    assert "summary += ' Причина остановки: '" in source
