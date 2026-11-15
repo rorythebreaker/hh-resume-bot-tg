@@ -182,7 +182,7 @@ def test_preview_never_posts_and_confirmation_is_single_use(workspace,monkeypatc
     root,pid=workspace
     monkeypatch.setattr(bot,'CONFIG_DIR',root/'config'); monkeypatch.setattr(bot,'PAUSE_FLAG',root/'config'/'.paused')
     monkeypatch.setattr(bot,'send',Mock()); monkeypatch.setattr(bot,'send_menu',Mock())
-    monkeypatch.setattr(bot,'hh_get_strict',Mock(side_effect=lambda path: {'id':'123456','name':'Developer'} if '/vacancies/' in path else {}))
+    monkeypatch.setattr(manual_flow.hh_api,'request',Mock(side_effect=lambda account,path,**kwargs: {'id':'123456','name':'Developer'} if '/vacancies/' in path else {}))
     monkeypatch.setattr(bot,'parse_log_applies',lambda:[])
     monkeypatch.setattr(bot,'hh_post_negotiation',Mock(return_value=(True,'')))
     monkeypatch.setattr(bot,'append_tool_log',Mock())
