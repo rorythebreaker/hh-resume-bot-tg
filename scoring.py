@@ -125,3 +125,28 @@ def add_feedback(profile_id, vacancy_id, decision, reason=None, path=None):
         db.execute("INSERT INTO feedback(profile_id,vacancy_id,decision,reason,created_at) VALUES (?,?,?,?,?)",
                    (profile_id, str(vacancy_id), decision, reason,
                     datetime.now(timezone.utc).isoformat()))
+
+def list_evaluations(profile_id, limit=30, path=None):
+    """Most recent scored vacancies, with latest explicit feedback."""
+    with _connect(path or database_path()) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute("""SELECT e.vacancy_id, e.score, e.evaluated_at, e.features_json,
+            e.vacancy_json, (SELECT f.decision FROM feedback f
+              WHERE f.profile_id=e.profile_id AND f.vacancy_id=e.vacancy_id
+              ORDER BY f.id DESC LIMIT 1) AS decision
+            FROM evaluations e WHERE e.profile_id=?
+            ORDER BY e.evaluated_at DESC LIMIT ?""",
+            (profile_id, max(1, min(int(limit), 100)))).fetchall()
+        return [{"vacancy_id": r["vacancy_id"], "score": r["score"],
+                 "evaluated_at": r["evaluated_at"], "features": json.loads(r["features_json"]),
+                 "vacancy": json.loads(r["vacancy_json"]), "decision": r["decision"]} for r in rows]
+
+
+def feedback_stats(profile_id, path=None):
+    with _connect(path or database_path()) as db:
+        rows = db.execute("""SELECT decision, COUNT(*) FROM (
+          SELECT f.decision FROM feedback f
+          JOIN (SELECT vacancy_id, MAX(id) AS latest FROM feedback
+                WHERE profile_id=? GROUP BY vacancy_id) latest ON latest.latest=f.id
+        ) GROUP BY decision""", (profile_id,)).fetchall()
+    return dict(rows)
