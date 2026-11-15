@@ -68,6 +68,8 @@ def confirm(bot, chat_id, data):
     _, _, pid, profile, vacancies = item
     def runner():
         sent = skipped = errors = 0
+        processed = 0
+        failure = ''
         try:
             with file_lock(bot.CONFIG_DIR / '.apply.lock', blocking=False), profiles_lib.profile_context(pid, profile):
                 me = hh_api.request(profile['hh_account'], '/me', captcha_ui=True)
@@ -75,29 +77,37 @@ def confirm(bot, chat_id, data):
                 for old in vacancies:
                     if bot.is_paused(): break
                     vid = str(old['id'])
-                    v = bot.hh_get_strict(f'/vacancies/{vid}')
+                    v = hh_api.request(profile['hh_account'], f'/vacancies/{vid}', captcha_ui=True)
                     if v.get('archived') or set(v.get('relations') or []) & {'got_response', 'got_rejection'}:
-                        skipped += 1; continue
+                        skipped += 1; processed += 1; continue
                     if v.get('has_test'):
-                        skipped += 1
+                        skipped += 1; processed += 1
                         bot.send(chat_id, f'Вакансия {vid}: обязательный тест, завершите отклик на HH.'); continue
                     state = bot.compute_limits_state(bot.parse_log_applies(), bot.now_msk())
-                    if not state['free_now']: break
+                    if not state['free_now']:
+                        failure = 'Достигнут лимит откликов.'
+                        break
                     letter = bot.render_letter(template, v, me)
                     if mode == 'ai': letter = generate_letter(profile, v)
                     ok, err = bot.hh_post_negotiation(vid, profile['resume_id'], letter)
                     if not ok:
-                        errors += 1
+                        errors += 1; processed += 1
+                        failure = err
                         bot.send(chat_id, html.escape(err))
                         break  # An ambiguous POST is never replayed automatically.
-                    bot.append_tool_log(vid, profile['resume_id']); sent += 1
+                    bot.append_tool_log(vid, profile['resume_id']); sent += 1; processed += 1
         except HHAPIError as exc:
-            errors += 1; bot.send(chat_id, html.escape(str(exc)))
+            errors += 1; failure = str(exc); bot.send(chat_id, html.escape(str(exc)))
         except (BlockingIOError, PermissionError):
             bot.send(chat_id, 'Уже выполняется рассылка. Повторите после её завершения.'); return
         except Exception:
-            errors += 1; bot.send(chat_id, 'Не удалось завершить отклик. Проверьте настройки и историю HH.')
-        bot.send(chat_id, f'Отправлено: {sent}; пропущено: {skipped}; ошибок: {errors}; не обработано: {len(vacancies)-sent-skipped-errors}.')
+            errors += 1; failure = 'Внутренняя ошибка ручного отклика.'
+            bot.send(chat_id, 'Не удалось завершить отклик. Проверьте настройки и историю HH.')
+        remaining = max(0, len(vacancies) - processed)
+        summary = f'Отправлено: {sent}; пропущено: {skipped}; ошибок: {errors}; не обработано: {remaining}.'
+        if failure:
+            summary += ' Причина остановки: ' + html.escape(failure)
+        bot.send(chat_id, summary)
     mini_app_context.make_thread(target=runner, daemon=True).start()
 
 def generate_letter(profile, vacancy):
