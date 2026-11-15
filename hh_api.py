@@ -27,7 +27,7 @@ def error_message(status, payload=None):
     }
     return f'HTTP {status}: ' + messages.get(status, 'временная ошибка HH' if status >= 500 else 'ошибка запроса HH')
 
-def _post_with_captcha(account, path, fields):
+def _post_with_captcha(account, path, fields, method='POST'):
     """Delegate CAPTCHA challenge handling to upstream's API client."""
     from hh_cli import BotTool
     from hh_applicant_tool.tool import BaseNamespace
@@ -41,9 +41,12 @@ def _post_with_captcha(account, path, fields):
     os.environ['HH_BOT_CAPTCHA_UI'] = '1'
     try:
         client = tool.api_client
-        client.max_retries = 1  # Never replay ambiguous application POSTs.
-        result = client.post(path, fields or {})
-        tool._application_succeeded()
+        if method == 'POST':
+            client.max_retries = 1  # Never replay ambiguous application POSTs.
+            result = client.post(path, fields or {})
+            tool._application_succeeded()
+        else:
+            result = client.get(path)
         return result
     except requests.RequestException:
         raise HHAPIError(0, 'Соединение с HH прервано; результат отправки неизвестен. Проверьте отклики перед повтором.') from None
@@ -66,9 +69,9 @@ def _post_with_captcha(account, path, fields):
             os.environ['HH_BOT_CAPTCHA_UI'] = previous
 
 
-def request(account, path, method='GET', fields=None):
-    if method.upper() == 'POST':
-        return _post_with_captcha(account, path, fields)
+def request(account, path, method='GET', fields=None, captcha_ui=False):
+    if method.upper() == 'POST' or (captcha_ui and method.upper() == 'GET'):
+        return _post_with_captcha(account, path, fields, method.upper())
     root = os.environ.get('CONFIG_DIR', '/app/config')
     refreshed = False
     for attempt in range(3):
