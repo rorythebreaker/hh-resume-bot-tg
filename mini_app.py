@@ -180,6 +180,7 @@ class MiniApp:
                     self.captcha_dismissed[pid]=session.captcha_seen
                     session.messages.clear()
             elif route == '/api/scoring/list':
+                session.section = 'scoring'
                 pid, profile = bot.profiles_lib.get_active_profile()
                 if not pid or not profiles_lib.get_scoring(profile)['enabled']:
                     raise ValueError('Скоринг выключен.')
