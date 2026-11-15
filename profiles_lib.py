@@ -388,3 +388,57 @@ def migrate_unique_letters():
 
     if changed:
         save_profiles(data)
+
+# Scoring preferences are per HH profile; shadow mode never changes application decisions.
+DEFAULT_SCORING = {
+    "enabled": False,
+    "mode": "shadow",
+    "auto_threshold": 90,
+    "review_threshold": 50,
+    "rules": {},
+}
+
+def get_scoring(profile):
+    stored = (profile or {}).get("scoring")
+    result = dict(DEFAULT_SCORING)
+    if isinstance(stored, dict):
+        result.update({k: v for k, v in stored.items() if k in DEFAULT_SCORING})
+    result["enabled"] = result["enabled"] is True
+    result["mode"] = "shadow"  # no automatic enforcement in v1
+    for key, default in (("auto_threshold", 90), ("review_threshold", 50)):
+        value = result[key]
+        result[key] = value if type(value) is int and 0 <= value <= 100 else default
+    if result["review_threshold"] >= result["auto_threshold"]:
+        result["review_threshold"], result["auto_threshold"] = 50, 90
+    if not isinstance(result["rules"], dict):
+        result["rules"] = {}
+    return result
+
+
+@_serialized
+def update_scoring(profile_id, **fields):
+    if set(fields) - {"enabled", "auto_threshold", "review_threshold", "rules"}:
+        raise ValueError("Unsupported scoring setting")
+    data = load_profiles()
+    if profile_id not in data["profiles"]:
+        raise ValueError("Unknown profile")
+    current = get_scoring(data["profiles"][profile_id])
+    if "enabled" in fields and type(fields["enabled"]) is not bool:
+        raise ValueError("enabled must be boolean")
+    for key in ("auto_threshold", "review_threshold"):
+        if key in fields and (type(fields[key]) is not int or not 0 <= fields[key] <= 100):
+            raise ValueError("Invalid threshold")
+    if "rules" in fields:
+        rules = fields["rules"]
+        if not isinstance(rules, dict) or set(rules) - {"role", "skills", "duties", "negative"}:
+            raise ValueError("Invalid rules")
+        for terms in rules.values():
+            if not isinstance(terms, list) or len(terms) > 100 or any(
+                    not isinstance(v, str) or not 1 <= len(v.strip()) <= 100 for v in terms):
+                raise ValueError("Invalid rule terms")
+    current.update(fields)
+    if current["review_threshold"] >= current["auto_threshold"]:
+        raise ValueError("Review threshold must be below auto threshold")
+    data["profiles"][profile_id]["scoring"] = current
+    save_profiles(data)
+    return current
