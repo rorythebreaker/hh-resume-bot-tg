@@ -86,6 +86,18 @@ class ObservedApplyOperation(ApplyOperation):
                     'complete':bool(details.get('description'))},ensure_ascii=False))
         except (OSError,ValueError,TypeError):
             logging.getLogger(__name__).warning('Could not persist vacancy notification metadata')
+        # Shadow scoring observes candidates only; it must never block an application.
+        try:
+            import scoring
+            import profiles_lib
+            pid, profile = profiles_lib.get_active_profile()
+            if pid and profile:
+                score_result = scoring.evaluate(details if 'details' in locals() else vacancy, profile)
+                scoring.save_evaluation(pid, details if 'details' in locals() else vacancy, score_result)
+                self.metrics['scored'] = self.metrics.get('scored', 0) + 1
+        except Exception:
+            logging.getLogger(__name__).exception('Shadow scoring failed; application continues')
+            self.metrics['scoring_errors'] = self.metrics.get('scoring_errors', 0) + 1
         before = state.applied_count
         try:
             result = super()._process_vacancy(vacancy, resume, placeholders, seen_employers, state)
