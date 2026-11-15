@@ -46,7 +46,7 @@ function sample(name='main'){
  schedule:['Расписание · МСК',[['Часы: 8–21','schedule'],['Изменить расписание','schedule']]],
  view:['Статистика',[['Последние отклики','view'],['История запусков','view'],['Приглашения','view'],['Состояние сервисов','view']]]};
  const [title,buttons]=sections[name]||sections.main;
- return {menu:{title,rows:buttons.map(([label,id])=>[{label,id}])},profile:{name:'Основной',account:'main'},paused:false,stats:{today:24,free:176},messages:[],input:null,notifications:'Сводки и уведомления продолжают приходить в чат бота.'};
+ return {menu:{title,rows:buttons.map(([label,id])=>[{label,id}])},profile:{name:'Основной',account:'main'},paused:false,stats:{today:24,free:176},messages:[],input:null,scoring:{enabled:false,mode:'shadow',auto_threshold:90,review_threshold:50,rules:{}},scoring_queue:[],scoring_feedback_stats:{},notifications:'Сводки и уведомления продолжают приходить в чат бота.'};
 }
 async function api(route,body){
  if(demo)return sample(body?.name||view);
@@ -66,6 +66,8 @@ async function update(route='/api/state',body,quiet=false){
 function render(preserveScroll=false){
  const pageY=window.scrollY||0,feedY=main.querySelector?.('.messages')?.scrollTop||0;
  const data=current;if(!data)return;if(data.section)view=data.section;
+ const scoringTab=document.getElementById('scoring-tab');if(scoringTab)scoringTab.hidden=!data.scoring?.enabled;
+ if(view==='scoring'&&!data.scoring?.enabled)view='profile';
  main.textContent='';status.textContent=data.paused?'На паузе':'Готов к работе';status.className='status'+(data.paused?' paused':'');
  if(demo)main.appendChild(element('div','Предпросмотр · пример данных, действия не выполняются','demo-label'));
  const greeting=element('section',undefined,'greeting');
@@ -73,6 +75,67 @@ function render(preserveScroll=false){
  greeting.appendChild(element('h1',data.profile.name));
  greeting.appendChild(element('p','Все настройки здесь. Важные события — в чате.'));
  main.appendChild(greeting);
+ if(view==='profile'){
+  const card=element('section',undefined,'card');
+  card.appendChild(element('h2','Настройки скоринга'));
+  const row=element('label',undefined,'scoring-switch');
+  const toggle=element('input');toggle.type='checkbox';toggle.checked=!!data.scoring?.enabled;
+  toggle.onchange=()=>update('/api/scoring/config',{enabled:toggle.checked});
+  row.appendChild(toggle);row.appendChild(element('span','Включить скоринг'));
+  card.appendChild(row);
+  card.appendChild(element('p','При включении появится вкладка «Скоринг». Пока действует только теневой режим: решения не влияют на отклики.'));
+  main.appendChild(card);
+ }
+ if(view==='scoring'){
+  const config=data.scoring||{};
+  const card=element('section',undefined,'card');
+  card.appendChild(element('h2','Скоринг · настройки'));
+  card.appendChild(element('p','Режим: теневой. Оценки 0–100 не влияют на отправку откликов.'));
+  const thresholdForm=element('form');
+  const inputs={};
+  for(const [key,label] of [['review_threshold','Порог ручной проверки'],['auto_threshold','Порог высокого соответствия']]){
+   const wrapper=element('label',label,'input-label');
+   const input=element('input');input.type='number';input.min='0';input.max='100';input.value=String(config[key]??(key==='auto_threshold'?90:50));
+   wrapper.appendChild(input);thresholdForm.appendChild(wrapper);inputs[key]=input;
+  }
+  const save=element('button','Сохранить пороги');save.type='submit';thresholdForm.appendChild(save);
+  thresholdForm.onsubmit=event=>{event.preventDefault();update('/api/scoring/config',{review_threshold:Number(inputs.review_threshold.value),auto_threshold:Number(inputs.auto_threshold.value)});};
+  card.appendChild(thresholdForm);
+  const editor=element('details');editor.appendChild(element('summary','Словари правил (JSON)'));
+  const help=element('p','Ключи: role, skills, duties, negative. Значения — массивы строк. Неуказанные категории используют стандартные правила.');
+  editor.appendChild(help);
+  const textarea=element('textarea');textarea.value=JSON.stringify(config.rules||{},null,2);textarea.rows=7;editor.appendChild(textarea);
+  const saveRules=element('button','Сохранить словари');
+  saveRules.onclick=()=>{try{const rules=JSON.parse(textarea.value);update('/api/scoring/config',{rules});}catch(error){toast('Неверный JSON');}};
+  editor.appendChild(saveRules);card.appendChild(editor);main.appendChild(card);
+  const queue=element('section',undefined,'card');queue.appendChild(element('h2','Дообучение · ручная разметка'));
+  const feedback=data.scoring_feedback_stats||{};
+  queue.appendChild(element('p','Размечено: подходит '+(feedback.positive||0)+' · не подходит '+(feedback.negative||0)+' · сомневаюсь '+(feedback.unsure||0)+'. Обучение ML пока не запускается.'));
+  const load=element('button','Обновить вакансии');load.onclick=()=>update('/api/scoring/list',{});queue.appendChild(load);
+  for(const item of data.scoring_queue||[]){
+   const box=element('div',undefined,'scoring-vacancy');
+   const name=element('strong',String(item.vacancy?.name||'Вакансия #'+item.vacancy_id));box.appendChild(name);
+   box.appendChild(element('p','Оценка: '+item.score+'/100 · Решение: '+(item.decision||'не оценено')));
+   const details=element('details');details.appendChild(element('summary','Объяснение оценки'));
+   details.appendChild(element('pre',JSON.stringify({parts:item.features?.parts,skills:item.features?.matched_skills,negative:item.features?.negative_matches},null,2)));
+   box.appendChild(details);
+   const link=element('a','Открыть на HH');link.href='https://hh.ru/vacancy/'+encodeURIComponent(item.vacancy_id);link.target='_blank';link.rel='noopener noreferrer';box.appendChild(link);
+   const reason=element('select');
+   for(const [value,label] of [['','Без причины'],['duties','Обязанности'],['stack','Стек'],['experience','Опыт'],['conditions','Условия'],['other','Другое']]){
+    const option=element('option',label);option.value=value;reason.appendChild(option);
+   }
+   box.appendChild(reason);
+   const buttons=element('div',undefined,'row');
+   for(const [decision,label] of [['positive','Подходит'],['negative','Не подходит'],['unsure','Сомневаюсь']]){
+    const button=element('button',label);
+    button.onclick=()=>update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});
+    buttons.appendChild(button);
+   }
+   box.appendChild(buttons);queue.appendChild(box);
+  }
+  if(!(data.scoring_queue||[]).length)queue.appendChild(element('p','Вакансий пока нет. Включите скоринг и запустите обычный поиск/рассылку, затем обновите список.'));
+  main.appendChild(queue);
+ }
  const stats=element('div',undefined,'stats');
  for(const [label,value,note]of [['Отправлено сегодня',data.stats.today,'откликов за текущий день'],['Доступно сейчас',data.stats.free,'в суточном окне HH']]){
   const card=element('div',undefined,'stat');card.appendChild(element('span',label));card.appendChild(element('strong',value??'—',label.startsWith('Доступно')?'accent':''));card.appendChild(element('small',note));stats.appendChild(card);
@@ -111,7 +174,7 @@ function render(preserveScroll=false){
  if(preserveScroll){const feed=main.querySelector?.('.messages');if(feed)feed.scrollTop=feedY;window.scrollTo?.(0,pageY);}
  document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
 }
-document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;update('/api/view',{name:view});});
+document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>{view=button.dataset.view;update(view==='scoring'?'/api/scoring/list':'/api/view',view==='scoring'?{}:{name:view});});
 if(tg){tg.ready();tg.expand();tg.onEvent('activated',()=>update('/api/state',undefined,true));}
 if(!initData&&!demo){
  main.textContent='';const gate=element('div',undefined,'empty');gate.appendChild(element('h1','Откройте панель в Telegram'));gate.appendChild(element('p','В личном чате с ботом нажмите «Открыть панель». Доступ подтверждается Telegram.'));main.appendChild(gate);
