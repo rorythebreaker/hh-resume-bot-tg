@@ -74,3 +74,12 @@ def test_captcha_waiting_does_not_send_result(tmp_path, monkeypatch):
     monkeypatch.setattr(apply_captcha, 'notify_result', notified.append)
     apply_captcha.event('profile', 'waiting', 'Введите CAPTCHA.')
     assert notified == []
+
+
+def test_manual_get_uses_captcha_aware_client():
+    source = (ROOT / 'manual_flow.py').read_text(encoding='utf-8')
+    assert "hh_api.request(profile['hh_account'], '/me', captcha_ui=True)" in source
+    assert "hh_api.request(profile['hh_account'], f'/vacancies/{vid}', captcha_ui=True)" in source
+    api_source = (ROOT / 'hh_api.py').read_text(encoding='utf-8')
+    assert "result = client.get(path)" in api_source
+    assert "captcha_ui and method.upper() == 'GET'" in api_source
