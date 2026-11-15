@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from unittest.mock import Mock
 import pytest
 import mini_app
+import manual_flow
 import mini_app_context as context
 
 TOKEN = 'unit-test-token'
