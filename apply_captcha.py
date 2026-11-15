@@ -87,6 +87,10 @@ def event(profile, state, message, diagnostics=None):
     print('CAPTCHA_STATUS: '+message,flush=True)
     if diagnostics:
         print('CAPTCHA_DIAGNOSTIC: '+diagnostics,flush=True)
+    # Send a terminal outcome to Telegram even when no new CAPTCHA is pending.
+    # Never include diagnostic details, challenge URLs or user-entered answers.
+    if state in ('accepted', 'finished', 'expired', 'cancelled', 'stopped'):
+        notify_result(message)
 
 
 def notify_owner():
@@ -107,3 +111,22 @@ def notify_owner():
             response.read()
     except Exception:
         print('CAPTCHA notification unavailable; open Mini App to check the challenge.',flush=True)
+
+
+def notify_result(message):
+    """Best-effort owner notification for a completed CAPTCHA flow."""
+    from urllib.request import Request, urlopen
+    token = os.environ.get('TG_BOT_TOKEN', '')
+    owner = os.environ.get('TG_CHAT_ID', '')
+    if not token or not owner or os.environ.get('BOT_TRANSPORT', 'telegram') != 'telegram':
+        return
+    root = os.environ.get('TG_API_ROOT', 'https://api.telegram.org').rstrip('/')
+    payload = {'chat_id': owner, 'text': message}
+    try:
+        request = Request(root + '/bot' + token + '/sendMessage',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'})
+        with urlopen(request, timeout=10) as response:
+            response.read()
+    except Exception:
+        print('CAPTCHA result notification unavailable.', flush=True)
