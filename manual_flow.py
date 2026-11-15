@@ -10,6 +10,7 @@ import profiles_lib
 import mini_app_context
 from storage import file_lock
 from hh_api import HHAPIError
+import hh_api
 
 _pending = {}
 _guard = threading.Lock()
@@ -32,7 +33,7 @@ def prepare(bot, chat_id, text):
             vacancies = []
             with profiles_lib.profile_context(pid, profile):
                 for vid in ids:
-                    v = bot.hh_get_strict(f'/vacancies/{vid}')
+                    v = hh_api.request(profile['hh_account'], f'/vacancies/{vid}', captcha_ui=True)
                     vacancies.append(v)
             token = secrets.token_hex(8)
             with _guard:
@@ -69,7 +70,7 @@ def confirm(bot, chat_id, data):
         sent = skipped = errors = 0
         try:
             with file_lock(bot.CONFIG_DIR / '.apply.lock', blocking=False), profiles_lib.profile_context(pid, profile):
-                me = bot.hh_get_strict('/me')
+                me = hh_api.request(profile['hh_account'], '/me', captcha_ui=True)
                 template = profiles_lib.get_letter_path(profile).read_text(encoding='utf-8')
                 for old in vacancies:
                     if bot.is_paused(): break
