@@ -61,3 +61,31 @@ def test_shadow_scoring_failure_does_not_stop_upstream(monkeypatch):
     operation._process_vacancy({"id": "123", "name": "DevOps", "alternate_url": "https://hh.ru/vacancy/123"}, {}, {}, set(), state)
     assert seen == ["123"]
     assert operation.metrics["scoring_errors"] == 1
+
+
+def test_scoring_configuration_defaults_and_validation(tmp_path, monkeypatch):
+    import profiles_lib
+    monkeypatch.setattr(profiles_lib, "PROFILES_FILE", tmp_path / "profiles.json")
+    monkeypatch.setattr(profiles_lib, "PROFILES_EXAMPLE", tmp_path / "missing.json")
+    monkeypatch.setattr(profiles_lib, "LETTERS_DIR", tmp_path / "letters")
+    pid = profiles_lib.add_profile("Test", "main", "DevOps", "letter_default.txt")
+    assert profiles_lib.get_scoring(profiles_lib.load_profiles()["profiles"][pid])["enabled"] is False
+    updated = profiles_lib.update_scoring(pid, enabled=True, review_threshold=55, auto_threshold=90)
+    assert updated["enabled"] is True and updated["mode"] == "shadow"
+    with pytest.raises(ValueError):
+        profiles_lib.update_scoring(pid, review_threshold=95)
+    with pytest.raises(ValueError):
+        profiles_lib.update_scoring(pid, rules={"skills": [""]})
+
+
+def test_queue_is_scoped_and_latest_feedback_wins(tmp_path):
+    path = tmp_path / "db.sqlite"
+    vacancy = {"id": "555", "name": "Linux Engineer"}
+    result = scoring.evaluate(vacancy)
+    scoring.save_evaluation("p1", vacancy, result, path)
+    scoring.save_evaluation("p2", vacancy, result, path)
+    scoring.add_feedback("p1", "555", "negative", "duties", path)
+    scoring.add_feedback("p1", "555", "positive", "stack", path)
+    assert scoring.list_evaluations("p1", path=path)[0]["decision"] == "positive"
+    assert scoring.list_evaluations("p2", path=path)[0]["decision"] is None
+    assert scoring.feedback_stats("p1", path=path) == {"positive": 1}
