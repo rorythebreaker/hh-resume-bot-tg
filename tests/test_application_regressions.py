@@ -12,8 +12,8 @@ def test_manual_post_uses_captcha_aware_client():
     assert "_post_with_captcha" in functions
     assert "client.post(path, fields or {})" in source
     assert "client.max_retries = 1" in source
-    assert "if method.upper() == 'POST':" in source
-    assert "return _post_with_captcha(account, path, fields)" in source
+    assert "if method.upper() == 'POST' or (captcha_ui and method.upper() == 'GET'):" in source
+    assert "return _post_with_captcha(account, path, fields, method.upper())" in source
 
 
 def test_run_respects_configured_response_cap():
