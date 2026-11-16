@@ -156,7 +156,14 @@ class MiniApp:
                 free, today = limits['free_now'], limits['calendar_today']
             except (OSError, ValueError, KeyError):
                 free, today = None, None
-            return {'section':session.section, 'menu':{'title':plain_text(session.menu['title']),'rows':rows},
+            scoring_state = profiles_lib.get_scoring(profile)
+            queue = []
+            feedback_stats = {}
+            if session.section == 'scoring' and pid and scoring_state['enabled']:
+                queue = scoring.list_evaluations(pid)
+                feedback_stats = scoring.feedback_stats(pid)
+            return {'scoring_queue': queue, 'scoring_feedback_stats': feedback_stats,
+                    'section':session.section, 'menu':{'title':plain_text(session.menu['title']),'rows':rows},
                     'profile':{'name':(profile or {}).get('display_name') or pid or 'Создайте профиль',
                                'account':(profile or {}).get('hh_account','—')},
                     'paused':bot.is_paused(), 'stats':{'free':free,'today':today},
