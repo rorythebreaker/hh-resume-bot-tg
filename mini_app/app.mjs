@@ -2,7 +2,7 @@ const tg=window.Telegram?.WebApp;
 const initData=tg?.initData||'';
 const demo=['localhost','127.0.0.1'].includes(location.hostname)&&new URLSearchParams(location.search).get('preview')==='1';
 const main=document.getElementById('main'),status=document.getElementById('status');
-let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='';
+let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='',scoringDraft='';
 export function actionStyle(label){
   if(/запуст|отправить|подтверд/i.test(label))return 'primary';
   if(/удал|отказ|пауза/i.test(label))return 'danger';
@@ -111,8 +111,8 @@ function render(preserveScroll=false){
   const importer=element('details');importer.appendChild(element('summary','Импорт полного JSON · v1.0'));
   importer.appendChild(element('p','Выберите файл или вставьте JSON. Сначала проверьте изменения, затем сохраните. Поиск HH и автоматические отклики не меняются.'));
   const file=element('input');file.type='file';file.accept='.json,application/json';
-  const jsonInput=element('textarea');jsonInput.rows=8;jsonInput.placeholder='Вставьте полный JSON словаря v1.0';
-  file.onchange=async()=>{if(file.files?.[0]){if(file.files[0].size>100000){toast('Файл превышает 100 КБ');return;}jsonInput.value=await file.files[0].text();}};
+  const jsonInput=element('textarea');jsonInput.rows=8;jsonInput.value=scoringDraft;jsonInput.oninput=()=>{scoringDraft=jsonInput.value;};jsonInput.placeholder='Вставьте полный JSON словаря v1.0';
+  file.onchange=async()=>{if(file.files?.[0]){if(file.files[0].size>100000){toast('Файл превышает 100 КБ');return;}jsonInput.value=await file.files[0].text();scoringDraft=jsonInput.value;}};
   importer.appendChild(file);importer.appendChild(jsonInput);
   const preview=element('button','Проверить JSON');preview.type='button';
   preview.onclick=()=>{try{update('/api/scoring/preview',{dictionary:JSON.parse(jsonInput.value)});}catch(e){toast('Некорректный JSON: '+e.message);}};
