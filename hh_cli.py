@@ -60,6 +60,22 @@ class ObservedApplyOperation(ApplyOperation):
             self.metrics['skipped'] += 1
             self.metrics['pre_skipped'] = self.metrics.get('pre_skipped', 0) + 1
             return
+        # Enforce location policy independently of AI and scoring, before apply.
+        import profiles_lib
+        _, active_profile = profiles_lib.get_active_profile()
+        geo_settings = profiles_lib.get_filters(active_profile) if active_profile else {}
+        if geo_settings.get("geo_enabled"):
+            from geo_filter import eligible
+            allowed, reason = eligible(vacancy, geo_settings["geo_home_area"])
+            if not allowed:
+                self.metrics["skipped"] += 1
+                counts = self.metrics.setdefault("skip_reasons", {})
+                key = "geo_" + reason
+                counts[key] = counts.get(key, 0) + 1
+                logging.getLogger(__name__).info(
+                    "GEO_FILTER_SKIP: id=%s reason=%s area=%s",
+                    vacancy.get("id", "?"), reason, (vacancy.get("area") or {}).get("id"))
+                return
         # Retain the public metadata already fetched by the application worker.
         # The notification watcher may not have a usable HH token of its own.
         try:
