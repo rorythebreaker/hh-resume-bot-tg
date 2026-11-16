@@ -217,6 +217,44 @@ def main():
         print(f"AI: messages={ai['enabled']}, filter={ai['filter'] or 'off'}, "
               f"rate_limit={ai['rate_limit']}, dry_run={ai['dry_run']}")
 
+    # Opt-in segmented discovery. Never apply from a partial manifest.
+    if os.environ.get("APPLY_SEGMENTED", "0") == "1":
+        import datetime as dt
+        from segmented_search import discover, UTC
+        from storage import atomic_write
+        now = dt.datetime.now(UTC)
+        days = max(1, min(int(os.environ.get("APPLY_DISCOVERY_DAYS", "7")), 30))
+        start = now - dt.timedelta(days=days)
+        params = {"text": search, "area": area}
+        if f["experience"]:
+            params["experience"] = f["experience"]
+        if f["salary"]:
+            params["salary"] = f["salary"]
+        if f["only_with_salary"]:
+            params["only_with_salary"] = "true"
+        if not f["geo_enabled"]:
+            if f["schedule"]:
+                params["schedule"] = f["schedule"]
+            if f["work_format"]:
+                params["work_format"] = ",".join(f["work_format"])
+        checkpoint = Path(os.environ.get("CONFIG_DIR", "/app/config")) / hh_account / "discovery" / (pid + ".json")
+        # Keep the window stable between runs so the checkpoint can resume.
+        window_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        window_start = window_end - dt.timedelta(days=days)
+        try:
+            state = discover(hh_account, params, window_start, window_end, checkpoint,
+                             max_requests=max(1, min(int(os.environ.get("APPLY_DISCOVERY_REQUESTS", "250")), 1000)))
+        except Exception as exc:
+            print("DISCOVERY_ERROR: " + str(exc), file=sys.stderr)
+            return 2
+        print(f"DISCOVERY: unique={len(state['vacancies'])} completed={len(state['completed'])} pending={len(state['pending'])} overflow={len(state.get('overflow', []))}", flush=True)
+        if state["pending"] or state.get("overflow"):
+            print("DISCOVERY_INCOMPLETE: checkpoint saved; no applications sent", flush=True)
+            return 2
+        manifest = checkpoint.with_suffix(".vacancies.json")
+        atomic_write(manifest, json.dumps(list(state["vacancies"].values()), ensure_ascii=False))
+        os.environ["HH_BOT_VACANCY_MANIFEST"] = str(manifest)
+
     print(f"Exec: {args}", flush=True)
 
     # Тестовый прогон повторять бессмысленно: отклики не отправляются, и любой
