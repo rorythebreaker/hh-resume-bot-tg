@@ -112,7 +112,8 @@ def main():
     hh_account = profile.get("hh_account", "main")
     search = profile.get("search", "")
     letter = profile.get("letter", "letter_default.txt")
-    area = str(profile.get("area", 113))
+    geo = profiles_lib.get_filters(profile)
+    area = "113" if geo["geo_enabled"] else str(profile.get("area", 113))
     excluded = profile.get("excluded_filter", "")
     resume_id = (profile.get("resume_id") or "").strip()
 
@@ -169,11 +170,14 @@ def main():
     args.extend(["--total-pages", str(pages)])
     if f["experience"]:
         args.extend(["--experience", f["experience"]])
-    if f["schedule"]:
-        args.extend(["--schedule", f["schedule"]])
-    if f["work_format"]:
-        args.append("--work-format")
-        args.extend(f["work_format"])
+    if not f["geo_enabled"]:
+        if f["schedule"]:
+            args.extend(["--schedule", f["schedule"]])
+        if f["work_format"]:
+            args.append("--work-format")
+            args.extend(f["work_format"])
+    else:
+        print("GEO_FILTER: nationwide search; remote-only outside home city", flush=True)
     if f["salary"]:
         args.extend(["--salary", str(f["salary"])])
     if f["only_with_salary"]:
