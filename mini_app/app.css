@@ -8,8 +8,30 @@ nav:has(#scoring-tab[hidden]){grid-template-columns:repeat(3,1fr)}
 nav button[hidden]{display:none}
 .scoring-switch{display:flex;align-items:center;gap:12px;margin:16px 0;font-weight:650}
 .scoring-switch input{width:22px;height:22px;flex:none}
-.scoring-vacancy{padding:14px 0;border-top:1px solid var(--tg-theme-section-separator-color,#e8ebf0);display:grid;gap:9px}
-.scoring-vacancy .row{display:flex;gap:6px;flex-wrap:wrap}
-.scoring-vacancy .row button{flex:1;min-width:90px}
-.scoring-vacancy pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
-.scoring-vacancy select{padding:10px;border-radius:10px;background:var(--tg-theme-secondary-bg-color,#f6f8fb);color:inherit}
+
+/* Scoring has a dedicated layout and consistent controls. */
+.scoring-queue-head,.scoring-progress,.scoring-pager{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.scoring-queue-head h2{margin:0;font-size:17px}
+.scoring-muted{color:var(--tg-theme-hint-color,#9aa6b4);font-size:13px;line-height:1.5}
+.scoring-btn,.scoring-queue button,.scoring-queue select,.card:has(>details) button{font:inherit}
+.scoring-btn{border:1px solid var(--tg-theme-section-separator-color,#536171);border-radius:11px;padding:11px 13px;min-height:44px;background:var(--tg-theme-secondary-bg-color,#283545);color:var(--tg-theme-text-color,#fff);font-size:13px;font-weight:650;text-align:center;cursor:pointer}
+.scoring-btn.is-selected{background:var(--tg-theme-button-color,#2999e8);border-color:var(--tg-theme-button-color,#2999e8);color:var(--tg-theme-button-text-color,#fff)}
+.scoring-btn:disabled{opacity:.4}
+.scoring-filters{display:flex;gap:7px;overflow-x:auto;padding:7px 0 14px;scrollbar-width:thin}
+.scoring-filter{white-space:nowrap;min-height:37px;padding:8px 12px;flex-shrink:0}
+.scoring-progress{margin:8px 0 14px;font-size:12px;color:var(--tg-theme-hint-color,#9aa6b4)}
+.scoring-score{font-weight:750;color:var(--tg-theme-link-color,#4aabf0)}
+.scoring-vacancy{border:1px solid var(--tg-theme-section-separator-color,#536171);background:var(--tg-theme-bg-color,#1f2c3a);border-radius:16px;padding:17px;display:flex;flex-direction:column;gap:12px}
+.scoring-vacancy h3{font-size:19px;line-height:1.35;margin:0}
+.scoring-description{font-size:14px;line-height:1.55;margin:0;white-space:normal;overflow-wrap:anywhere}
+.scoring-explanation{border-top:1px solid var(--tg-theme-section-separator-color,#536171);border-bottom:1px solid var(--tg-theme-section-separator-color,#536171);padding:12px 0;font-size:13px}
+.scoring-explanation summary{cursor:pointer;font-weight:650}
+.scoring-part{padding:5px 0;color:var(--tg-theme-hint-color,#a5b0bd)}
+.scoring-link{font-size:13px;color:var(--tg-theme-link-color,#55aaff)}
+.scoring-vacancy select{width:100%;padding:11px;border:1px solid var(--tg-theme-section-separator-color,#536171);border-radius:11px;background:var(--tg-theme-secondary-bg-color,#283545);color:inherit}
+.scoring-decisions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.scoring-decision{min-width:0;overflow-wrap:anywhere;padding:10px 5px}
+.scoring-pager{margin-top:13px}
+.scoring-pager .scoring-btn{min-width:112px}
+.card:has(>details) details>button{margin:10px 8px 0 0;border:1px solid var(--tg-theme-section-separator-color,#536171);border-radius:11px;background:var(--tg-theme-button-color,#2999e8);color:var(--tg-theme-button-text-color,#fff);padding:11px 14px;font-weight:650}
+@media(max-width:390px){.scoring-vacancy{padding:12px}.scoring-decision{font-size:12px}}
