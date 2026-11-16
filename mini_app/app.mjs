@@ -153,7 +153,18 @@ function render(preserveScroll=false){
     if(salary.to!=null)amounts.push('до '+Number(salary.to).toLocaleString('ru-RU'));
     if(amounts.length){
      const currency=names(salary.currency)||'';
-     pay=amounts.join(' ')+' '+({RUR:'₽',RUB:'₽',USD:'
+     pay=amounts.join(' ')+' '+({RUR:'₽',RUB:'₽',USD:'$',EUR:'€'}[currency]||currency);
+     if(salary.gross===true)pay+=' до вычета налогов';
+     if(salary.gross===false)pay+=' на руки';
+    }
+   }
+   const facts=element('div',undefined,'scoring-facts');
+   for(const [label,value] of [['Компания',names(v.employer)],['Зарплата',pay],['Формат',names(v.work_format)||'не указан'],['Опыт',names(v.experience)||'не указан'],['График',[names(v.work_schedule_by_days)||names(v.schedule),names(v.working_hours)].filter(Boolean).join(', ')||'не указан']]){
+    if(label==='Компания'&&!value)continue;
+    const line=element('div',undefined,'scoring-fact');line.appendChild(element('span',label));line.appendChild(element('strong',value));facts.appendChild(line);
+   }
+   box.appendChild(facts);
+   const description=v.description||v.snippet;
    if(description){
     const plain=String(typeof description==='string'?description:JSON.stringify(description)).replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim();
     box.appendChild(element('p',plain,'scoring-description'));
