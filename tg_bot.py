@@ -2350,6 +2350,7 @@ def build_menu_filters():
     f = profiles_lib.get_filters(profile)
     formats = ", ".join(FILTER_LABELS["work_format"][v] for v in f["work_format"]) or "любой"
     banned = len(f["excluded_employer_ids"])
+    geo_status = "включён" if f["geo_enabled"] else "выключен"
     return {
         "title": (f"🔎 <b>Фильтры поиска «{html.escape(_active_profile_label())}»</b>\n"
                   "Отсекают вакансии на стороне HH — до отклика и до вызова AI, "
@@ -2358,6 +2359,8 @@ def build_menu_filters():
             [(f"💼 Опыт: {FILTER_LABELS['experience'][f['experience']]}", "menu:f_exp")],
             [(f"🕘 График: {FILTER_LABELS['schedule'][f['schedule']]}", "menu:f_sched")],
             [(f"🏠 Формат: {formats}", "menu:f_format")],
+            [(f"🌍 Вся Россия / вне города удалённо: {geo_status}", "flt:geo_enabled")],
+            [(f"📍 Мой город (HH ID): {f['geo_home_area'] or 'не задан'}", "cmd:/f_geo_city")],
             [(f"💰 Зарплата от: {f['salary'] or 'любой'}", "cmd:/f_salary")],
             [(f"💵 Только с зарплатой: {_ai_flag(f['only_with_salary'])}", "flt:only_with_salary")],
             [(f"📅 Период: {str(f['period']) + ' дн' if f['period'] else 'любой'}", "cmd:/f_period")],
@@ -2420,6 +2423,7 @@ def build_menu_f_banned():
 
 
 FILTER_NUMERIC = {
+    "/f_geo_city": ("geo_home_area", "HH ID домашнего города", "Числовой ID города HH. Москва — 1, Санкт-Петербург — 2. Поиск по России (113)."),
     "/f_max": ("max_responses", "Лимит откликов", "Максимум за один запуск (не менее 1)."),
     "/f_salary": ("salary", "💰 Зарплата от",
                   "Минимальная зарплата в рублях. 0 — не фильтровать."),
@@ -2450,7 +2454,10 @@ def cmd_filter_number_save(field, text):
         return "⚠️ Нужно целое число. Ещё раз или /cancel."
     if value < 0 or value > 10_000_000:
         return "⚠️ Значение вне разумного диапазона."
-    profiles_lib.update_filters(pid, **{field: value})
+    try:
+        profiles_lib.update_filters(pid, **{field: value})
+    except ValueError as exc:
+        return "⚠️ " + html.escape(str(exc))
     PENDING["action"] = None
     title = FILTER_NUMERIC[next(k for k, v in FILTER_NUMERIC.items() if v[0] == field)][1]
     return f"✅ {title}: <b>{value or 'не задано'}</b>"
@@ -2757,6 +2764,7 @@ def run_command(chat_id, cmd):
         "/f_max": lambda: cmd_filter_number_edit("/f_max"),
         "/f_salary": lambda: cmd_filter_number_edit("/f_salary"),
         "/f_period": lambda: cmd_filter_number_edit("/f_period"),
+        "/f_geo_city": lambda: cmd_filter_number_edit("/f_geo_city"),
         "/ai_filter_prompt": lambda: cmd_ai_prompt_edit("/ai_filter_prompt"),
         "/ai_message_prompt": lambda: cmd_ai_prompt_edit("/ai_message_prompt"),
         "/ai_system_prompt": lambda: cmd_ai_prompt_edit("/ai_system_prompt"),
