@@ -102,7 +102,7 @@ if runner_sent:
 # Count processed candidates from the core's structured metrics, if available.
 # Do not claim zero attempts when the runner did not emit a counter.
 import json
-core_metrics = re.findall(r"^CORE_METRICS:\\s*(\\{[^\\n]*\\})", runner_out, re.MULTILINE)
+core_metrics = re.findall(r"^CORE_METRICS:\s*(\{[^\n]*\})", runner_out, re.MULTILINE)
 tried = None
 if core_metrics:
     try:
