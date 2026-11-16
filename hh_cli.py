@@ -23,6 +23,16 @@ class ObservedApplyOperation(ApplyOperation):
             print('CORE_METRICS: ' + json.dumps(self.metrics), flush=True)
 
     def _get_vacancies(self, resume_id):
+        manifest = os.environ.get("HH_BOT_VACANCY_MANIFEST")
+        if manifest:
+            # Discovery produces the same search-result dictionaries consumed by
+            # upstream; its application/duplicate checks remain authoritative.
+            with open(manifest, encoding="utf-8") as stream:
+                vacancies = json.load(stream)
+            for vacancy in vacancies:
+                self.metrics['found'] += 1
+                yield vacancy
+            return
         for vacancy in super()._get_vacancies(resume_id=resume_id):
             self.metrics['found'] += 1
             yield vacancy
