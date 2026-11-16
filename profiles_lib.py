@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from storage import transaction, atomic_write
 from hh_compat import validate_account
 from pathlib import Path
+import scoring_config
 
 APP_DIR = Path(os.environ.get("APP_DIR", "/app"))
 PROFILES_FILE = Path(
@@ -396,6 +397,10 @@ DEFAULT_SCORING = {
     "auto_threshold": 90,
     "review_threshold": 50,
     "rules": {},
+    "weights": None,
+    "penalties": None,
+    "target": {},
+    "dictionary_version": None,
 }
 
 def get_scoring(profile):
@@ -417,7 +422,7 @@ def get_scoring(profile):
 
 @_serialized
 def update_scoring(profile_id, **fields):
-    if set(fields) - {"enabled", "auto_threshold", "review_threshold", "rules"}:
+    if set(fields) - {"enabled", "auto_threshold", "review_threshold", "rules", "weights", "penalties", "target", "dictionary_version"}:
         raise ValueError("Unsupported scoring setting")
     data = load_profiles()
     if profile_id not in data["profiles"]:
@@ -429,13 +434,15 @@ def update_scoring(profile_id, **fields):
         if key in fields and (type(fields[key]) is not int or not 0 <= fields[key] <= 100):
             raise ValueError("Invalid threshold")
     if "rules" in fields:
-        rules = fields["rules"]
-        if not isinstance(rules, dict) or set(rules) - {"role", "skills", "duties", "negative"}:
-            raise ValueError("Invalid rules")
-        for terms in rules.values():
-            if not isinstance(terms, list) or len(terms) > 100 or any(
-                    not isinstance(v, str) or not 1 <= len(v.strip()) <= 100 for v in terms):
-                raise ValueError("Invalid rule terms")
+        fields["rules"] = scoring_config.validate_rules(fields["rules"])
+    if "weights" in fields:
+        fields["weights"] = scoring_config.validate_weights(fields["weights"])
+    if "penalties" in fields:
+        fields["penalties"] = scoring_config.validate_penalties(fields["penalties"])
+    if "target" in fields and not isinstance(fields["target"], dict):
+        raise ValueError("target должен быть объектом.")
+    if "dictionary_version" in fields and fields["dictionary_version"] != "1.0":
+        raise ValueError("Неподдерживаемая версия словаря.")
     current.update(fields)
     if current["review_threshold"] >= current["auto_threshold"]:
         raise ValueError("Review threshold must be below auto threshold")
