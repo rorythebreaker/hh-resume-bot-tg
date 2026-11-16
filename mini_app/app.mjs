@@ -107,7 +107,25 @@ function render(preserveScroll=false){
   const textarea=element('textarea');textarea.value=JSON.stringify(config.rules||{},null,2);textarea.rows=7;editor.appendChild(textarea);
   const saveRules=element('button','Сохранить словари');
   saveRules.onclick=()=>{try{const rules=JSON.parse(textarea.value);update('/api/scoring/config',{rules});}catch(error){toast('Неверный JSON');}};
-  editor.appendChild(saveRules);card.appendChild(editor);main.appendChild(card);
+  editor.appendChild(saveRules);
+  const importer=element('details');importer.appendChild(element('summary','Импорт полного JSON · v1.0'));
+  importer.appendChild(element('p','Выберите файл или вставьте JSON. Сначала проверьте изменения, затем сохраните. Поиск HH и автоматические отклики не меняются.'));
+  const file=element('input');file.type='file';file.accept='.json,application/json';
+  const jsonInput=element('textarea');jsonInput.rows=8;jsonInput.placeholder='Вставьте полный JSON словаря v1.0';
+  file.onchange=async()=>{if(file.files?.[0]){if(file.files[0].size>100000){toast('Файл превышает 100 КБ');return;}jsonInput.value=await file.files[0].text();}};
+  importer.appendChild(file);importer.appendChild(jsonInput);
+  const preview=element('button','Проверить JSON');preview.type='button';
+  preview.onclick=()=>{try{update('/api/scoring/preview',{dictionary:JSON.parse(jsonInput.value)});}catch(e){toast('Некорректный JSON: '+e.message);}};
+  const apply=element('button','Импортировать словарь');apply.type='button';
+  apply.onclick=()=>{try{if(!window.confirm('Заменить настройки скоринга текущего профиля?'))return;update('/api/scoring/import',{dictionary:JSON.parse(jsonInput.value)});}catch(e){toast('Некорректный JSON: '+e.message);}};
+  importer.appendChild(preview);importer.appendChild(apply);
+  if(data.scoring_import_preview){
+   const result=data.scoring_import_preview;
+   importer.open=true;
+   importer.appendChild(element('pre',JSON.stringify(result,null,2)));
+   if(result.saved)importer.appendChild(element('p','Настройки скоринга сохранены для текущего профиля.'));
+  }
+  card.appendChild(editor);card.appendChild(importer);main.appendChild(card);
   const queue=element('section',undefined,'card');queue.appendChild(element('h2','Дообучение · ручная разметка'));
   const feedback=data.scoring_feedback_stats||{};
   queue.appendChild(element('p','Размечено: подходит '+(feedback.positive||0)+' · не подходит '+(feedback.negative||0)+' · сомневаюсь '+(feedback.unsure||0)+'. Обучение ML пока не запускается.'));
