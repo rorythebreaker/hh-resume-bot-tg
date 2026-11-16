@@ -190,7 +190,7 @@ function render(preserveScroll=false){
    const buttons=element('div',undefined,'scoring-decisions');
    for(const [decision,label] of [['positive','Подходит'],['negative','Не подходит'],['unsure','Сомневаюсь']]){
     const button=element('button',label,'scoring-btn scoring-decision'+(item.decision===decision?' is-selected':''));
-    button.type='button';button.onclick=async()=>{const previousFilter=scoringFilter;scoringFilter='unrated';await update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});if(current?.scoring_queue?.some(entry=>entry.vacancy_id===item.vacancy_id&&!entry.decision)){scoringFilter=previousFilter;render(true);}};
+    button.type='button';button.onclick=async()=>{if(busy)return;busy=true;buttons.querySelectorAll('button').forEach(b=>b.disabled=true);try{const next=await api('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});scoringFilter='unrated';current=next;render(true);}catch(error){toast(error.message);buttons.querySelectorAll('button').forEach(b=>b.disabled=false);}finally{busy=false;}};
     buttons.appendChild(button);
    }
    box.appendChild(buttons);queue.appendChild(box);
