@@ -159,6 +159,8 @@ DEFAULT_FILTERS = {
     "order_by": "",          # --order-by
     "skip_tests": False,     # --skip-tests
     "max_responses": 50,
+    "geo_enabled": False,    # search whole country, restrict nonlocal to remote
+    "geo_home_area": 0,      # HH city area id; must be configured before enabling
     "send_email": False,     # --send-email
     "excluded_employer_ids": [],  # --excluded-employer-id
 }
@@ -182,12 +184,12 @@ def get_filters(profile):
         f["order_by"] = ""
     f["work_format"] = [v for v in (f["work_format"] or []) if v in WORK_FORMAT_VALUES]
     f["excluded_employer_ids"] = [str(v) for v in (f["excluded_employer_ids"] or []) if str(v).isdigit()]
-    for key in ("salary", "period", "max_responses"):
+    for key in ("salary", "period", "max_responses", "geo_home_area"):
         try:
             f[key] = max(0, int(f[key]))
         except (TypeError, ValueError):
             f[key] = 0
-    for key in ("only_with_salary", "skip_tests", "send_email"):
+    for key in ("only_with_salary", "skip_tests", "send_email", "geo_enabled"):
         f[key] = bool(f[key])
     return f
 
@@ -203,6 +205,8 @@ def update_filters(profile_id, **fields):
         raise ValueError(f"Unknown filter fields: {', '.join(sorted(unknown))}")
     filters = get_filters(profile)
     filters.update(fields)
+    if filters["geo_enabled"] and not 1 <= int(filters["geo_home_area"]) <= 999999:
+        raise ValueError("Сначала укажите HH ID домашнего города.")
     profile["filters"] = filters
     save_profiles(data)
     return filters
