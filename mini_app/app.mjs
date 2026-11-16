@@ -2,7 +2,7 @@ const tg=window.Telegram?.WebApp;
 const initData=tg?.initData||'';
 const demo=['localhost','127.0.0.1'].includes(location.hostname)&&new URLSearchParams(location.search).get('preview')==='1';
 const main=document.getElementById('main'),status=document.getElementById('status');
-let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='',scoringDraft='';
+let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='',scoringDraft='',scoringIndex=0,scoringFilter='all';
 export function actionStyle(label){
   if(/запуст|отправить|подтверд/i.test(label))return 'primary';
   if(/удал|отказ|пауза/i.test(label))return 'danger';
@@ -74,7 +74,7 @@ function render(preserveScroll=false){
  greeting.appendChild(element('div','ВАША КАРЬЕРА · '+data.profile.account,'eyebrow'));
  greeting.appendChild(element('h1',data.profile.name));
  greeting.appendChild(element('p','Все настройки здесь. Важные события — в чате.'));
- main.appendChild(greeting);
+ if(view!=='scoring')main.appendChild(greeting);
  if(view==='profile'){
   const card=element('section',undefined,'card');
   card.appendChild(element('h2','Настройки скоринга'));
@@ -101,17 +101,10 @@ function render(preserveScroll=false){
   const save=element('button','Сохранить пороги');save.type='submit';thresholdForm.appendChild(save);
   thresholdForm.onsubmit=event=>{event.preventDefault();update('/api/scoring/config',{review_threshold:Number(inputs.review_threshold.value),auto_threshold:Number(inputs.auto_threshold.value)});};
   card.appendChild(thresholdForm);
-  const editor=element('details');editor.appendChild(element('summary','Словари правил (JSON)'));
-  const help=element('p','Ключи: role, skills, duties, negative. Значения — массивы строк. Неуказанные категории используют стандартные правила.');
-  editor.appendChild(help);
-  const textarea=element('textarea');textarea.value=JSON.stringify(config.rules||{},null,2);textarea.rows=7;editor.appendChild(textarea);
-  const saveRules=element('button','Сохранить словари');
-  saveRules.onclick=()=>{try{const rules=JSON.parse(textarea.value);update('/api/scoring/config',{rules});}catch(error){toast('Неверный JSON');}};
-  editor.appendChild(saveRules);
-  const importer=element('details');importer.appendChild(element('summary','Импорт полного JSON · v1.0'));
+  const importer=element('details');importer.appendChild(element('summary','Словарь скоринга (JSON)'));
   importer.appendChild(element('p','Выберите файл или вставьте JSON. Сначала проверьте изменения, затем сохраните. Поиск HH и автоматические отклики не меняются.'));
   const file=element('input');file.type='file';file.accept='.json,application/json';
-  const jsonInput=element('textarea');jsonInput.rows=8;jsonInput.value=scoringDraft;jsonInput.oninput=()=>{scoringDraft=jsonInput.value;};jsonInput.placeholder='Вставьте полный JSON словаря v1.0';
+  const jsonInput=element('textarea');jsonInput.rows=8;jsonInput.value=scoringDraft;jsonInput.oninput=()=>{scoringDraft=jsonInput.value;};jsonInput.placeholder='Вставьте JSON словаря';
   file.onchange=async()=>{if(file.files?.[0]){if(file.files[0].size>100000){toast('Файл превышает 100 КБ');return;}jsonInput.value=await file.files[0].text();scoringDraft=jsonInput.value;}};
   importer.appendChild(file);importer.appendChild(jsonInput);
   const preview=element('button','Проверить JSON');preview.type='button';
@@ -126,34 +119,71 @@ function render(preserveScroll=false){
    if(result.saved)importer.appendChild(element('p','Настройки скоринга сохранены для текущего профиля.'));
   }
   card.appendChild(editor);card.appendChild(importer);main.appendChild(card);
-  const queue=element('section',undefined,'card');queue.appendChild(element('h2','Дообучение · ручная разметка'));
+  const queue=element('section',undefined,'card scoring-queue');
+  const queueHead=element('div',undefined,'scoring-queue-head');
+  queueHead.appendChild(element('h2','Оценка вакансий'));
+  const load=element('button','Обновить','scoring-btn scoring-btn-secondary');load.type='button';load.onclick=()=>update('/api/scoring/list',{});queueHead.appendChild(load);queue.appendChild(queueHead);
   const feedback=data.scoring_feedback_stats||{};
-  queue.appendChild(element('p','Размечено: подходит '+(feedback.positive||0)+' · не подходит '+(feedback.negative||0)+' · сомневаюсь '+(feedback.unsure||0)+'. Обучение ML пока не запускается.'));
-  const load=element('button','Обновить вакансии');load.onclick=()=>update('/api/scoring/list',{});queue.appendChild(load);
-  for(const item of data.scoring_queue||[]){
-   const box=element('div',undefined,'scoring-vacancy');
-   const name=element('strong',String(item.vacancy?.name||'Вакансия #'+item.vacancy_id));box.appendChild(name);
-   box.appendChild(element('p','Оценка: '+item.score+'/100 · Решение: '+(item.decision||'не оценено')));
-   const details=element('details');details.appendChild(element('summary','Объяснение оценки'));
-   details.appendChild(element('pre',JSON.stringify({parts:item.features?.parts,skills:item.features?.matched_skills,negative:item.features?.negative_matches},null,2)));
-   box.appendChild(details);
-   const link=element('a','Открыть на HH');link.href='https://hh.ru/vacancy/'+encodeURIComponent(item.vacancy_id);link.target='_blank';link.rel='noopener noreferrer';box.appendChild(link);
+  queue.appendChild(element('p','Размечено: '+(feedback.positive||0)+' подходят · '+(feedback.negative||0)+' не подходят · '+(feedback.unsure||0)+' сомнений','scoring-muted'));
+  const all=data.scoring_queue||[];
+  const options=[['all','Все'],['unrated','Без оценки'],['positive','Подходят'],['negative','Не подходят'],['unsure','Сомнения']];
+  const filters=element('div',undefined,'scoring-filters');
+  for(const [key,label] of options){
+   const button=element('button',label,'scoring-btn scoring-filter'+(scoringFilter===key?' is-selected':''));
+   button.type='button';button.onclick=()=>{scoringFilter=key;scoringIndex=0;render(true);};filters.appendChild(button);
+  }
+  queue.appendChild(filters);
+  const items=all.filter(item=>scoringFilter==='all'||(scoringFilter==='unrated'?!item.decision:item.decision===scoringFilter));
+  scoringIndex=Math.min(scoringIndex,Math.max(0,items.length-1));
+  if(items.length){
+   const item=items[scoringIndex];
+   const progress=element('div',undefined,'scoring-progress');
+   progress.appendChild(element('span','Вакансия '+(scoringIndex+1)+' из '+items.length));
+   progress.appendChild(element('span',item.score+'/100 баллов','scoring-score'));
+   queue.appendChild(progress);
+   const box=element('article',undefined,'scoring-vacancy');
+   box.appendChild(element('h3',String(item.vacancy?.name||'Вакансия #'+item.vacancy_id)));
+   const description=item.vacancy?.description||item.vacancy?.snippet;
+   if(description){
+    const plain=String(typeof description==='string'?description:JSON.stringify(description)).replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim();
+    box.appendChild(element('p',plain.slice(0,380)+(plain.length>380?'…':''),'scoring-description'));
+   }
+   const labels={positive:'Подходит',negative:'Не подходит',unsure:'Сомневаюсь'};
+   box.appendChild(element('p','Твоя оценка: '+(labels[item.decision]||'Ещё не оценена'),'scoring-muted'));
+   const explanation=element('details',undefined,'scoring-explanation');explanation.appendChild(element('summary','Почему такая оценка'));
+   const parts=item.features?.parts||{};
+   const partLabels={role:'Должность',skills:'Технологии',duties:'Обязанности',experience:'Опыт',work_format:'Формат',salary:'Зарплата'};
+   for(const [key,label] of Object.entries(partLabels))explanation.appendChild(element('div',label+': '+(parts[key]??0)+' баллов','scoring-part'));
+   const skills=item.features?.matched_skills||[];
+   if(skills.length)explanation.appendChild(element('p','Совпавшие навыки: '+skills.join(', ')));
+   const penalties=item.features?.penalty_reasons||[];
+   if(penalties.length)explanation.appendChild(element('p','Штрафы: '+penalties.map(p=>p.reason+' −'+p.points).join(', ')));
+   box.appendChild(explanation);
+   const link=element('a','Посмотреть вакансию на HH','scoring-link');link.href='https://hh.ru/vacancy/'+encodeURIComponent(item.vacancy_id);link.target='_blank';link.rel='noopener noreferrer';box.appendChild(link);
+   const reasonLabel=element('label','Причина решения (необязательно)','input-label');
    const reason=element('select');
    for(const [value,label] of [['','Без причины'],['duties','Обязанности'],['stack','Стек'],['experience','Опыт'],['conditions','Условия'],['other','Другое']]){
     const option=element('option',label);option.value=value;reason.appendChild(option);
    }
-   box.appendChild(reason);
-   const buttons=element('div',undefined,'row');
+   reasonLabel.appendChild(reason);box.appendChild(reasonLabel);
+   const buttons=element('div',undefined,'scoring-decisions');
    for(const [decision,label] of [['positive','Подходит'],['negative','Не подходит'],['unsure','Сомневаюсь']]){
-    const button=element('button',label);
-    button.onclick=()=>update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});
+    const button=element('button',label,'scoring-btn scoring-decision'+(item.decision===decision?' is-selected':''));
+    button.type='button';button.onclick=()=>update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});
     buttons.appendChild(button);
    }
    box.appendChild(buttons);queue.appendChild(box);
-  }
-  if(!(data.scoring_queue||[]).length)queue.appendChild(element('p','Вакансий пока нет. Включите скоринг и запустите обычный поиск/рассылку, затем обновите список.'));
+   const pager=element('div',undefined,'scoring-pager');
+   const prev=element('button','← Назад','scoring-btn scoring-btn-secondary');prev.disabled=scoringIndex===0;prev.onclick=()=>{scoringIndex--;render(true);};
+   const next=element('button','Следующая →','scoring-btn scoring-btn-secondary');next.disabled=scoringIndex===items.length-1;next.onclick=()=>{scoringIndex++;render(true);};
+   pager.appendChild(prev);pager.appendChild(next);queue.appendChild(pager);
+  }else queue.appendChild(element('p',all.length?'Нет вакансий с выбранной оценкой.':'Вакансий пока нет. Запустите обычный поиск и обновите список.','scoring-muted'));
   main.appendChild(queue);
+  if(preserveScroll)window.scrollTo?.(0,pageY);
+  document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
+  return;
  }
+
  const stats=element('div',undefined,'stats');
  for(const [label,value,note]of [['Отправлено сегодня',data.stats.today,'откликов за текущий день'],['Доступно сейчас',data.stats.free,'в суточном окне HH']]){
   const card=element('div',undefined,'stat');card.appendChild(element('span',label));card.appendChild(element('strong',value??'—',label.startsWith('Доступно')?'accent':''));card.appendChild(element('small',note));stats.appendChild(card);
