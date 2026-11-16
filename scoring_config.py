@@ -76,7 +76,7 @@ def normalize_import(payload):
             if not isinstance(item, dict) or item.get("id") not in mapping or type(item.get("points")) is not int or not -100 <= item["points"] <= 0:
                 raise ValueError("Некорректное правило штрафа.")
             converted[mapping[item["id"]]] = -item["points"]
-        if set(converted) != set(mapping):
+        if set(converted) != set(mapping.values()):
             raise ValueError("Неполный список штрафов.")
         if "penalties" not in payload:
             penalties = validate_penalties(converted)
