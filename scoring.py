@@ -31,31 +31,51 @@ def _contains(text, phrase):
 
 
 def evaluate(vacancy, profile=None):
-    """Return explainable heuristic score, not a calibrated probability."""
+    """Explainable heuristic score; never authorizes or blocks applications."""
+    from scoring_config import DEFAULT_WEIGHTS, DEFAULT_PENALTIES
     rules = rules_for(profile)
+    config = (profile or {}).get("scoring") or {}
+    weights = config.get("weights") or WEIGHTS
+    penalties = config.get("penalties") or DEFAULT_PENALTIES
     title = str(vacancy.get("name") or "").casefold()
     body = " ".join(str(vacancy.get(k) or "") for k in ("description", "snippet")).casefold()
     text = title + " " + body
     role = any(_contains(title, p) for p in rules["role"])
     matched_skills = [p for p in rules["skills"] if _contains(text, p)]
-    duties = any(_contains(body, p) for p in rules["duties"])
+    duties = any(_contains(body, p) for p in rules["duties"] if p.strip())
     negative = [p for p in rules["negative"] if _contains(text, p)]
-    # Unknown metadata contributes zero; this is an explicit heuristic, not a negative label.
     experience = bool(vacancy.get("experience"))
     work_format = bool(vacancy.get("work_format"))
     salary = bool(vacancy.get("salary") or vacancy.get("salary_range"))
     parts = {
-        "role": WEIGHTS["role"] if role else 0,
-        "skills": round(WEIGHTS["skills"] * min(len(set(matched_skills)), 4) / 4),
-        "duties": WEIGHTS["duties"] if duties else 0,
-        "experience": WEIGHTS["experience"] if experience else 0,
-        "work_format": WEIGHTS["work_format"] if work_format else 0,
-        "salary": WEIGHTS["salary"] if salary else 0,
+        "role": weights["role"] if role else 0,
+        "skills": round(weights["skills"] * min(len(set(matched_skills)), 4) / 4),
+        "duties": weights["duties"] if duties else 0,
+        "experience": weights["experience"] if experience else 0,
+        "work_format": weights["work_format"] if work_format else 0,
+        "salary": weights["salary"] if salary else 0,
     }
-    penalty = 40 if negative else 0
+    # Context-sensitive negatives are applied only to explicit responsibilities,
+    # not to incidental references to first-line teams or SOC L1.
+    penalty_reasons = []
+    if config.get("dictionary_version") == "1.0":
+        primary_l1 = bool(re.search(r"(?:специалист|оператор|сотрудник|инженер)\\s+(?:технической\\s+)?поддержки.*(?:l1|1.?я линия|первой линии)|(?:help\\s?desk|service\\s?desk)\\s*(?:l1|1)", title))
+        user_support = bool(re.search(r"(?:поддержка пользователей|обращени[йя] пользователей|установка по на рабочие места)", body))
+        sales = bool(re.search(r"(?:менеджер по продажам|sales manager|оператор колл.центра)", title))
+        senior = bool(re.search(r"\\b(?:senior|lead|principal)\\b|\\b(?:ведущий|старший)\\b", title) and re.search(r"(?:от 5 лет|5\\+ лет|6\\+ лет|более 5 лет)", text))
+        office = bool(re.search(r"(?:только офис|исключительно в офисе|строго офис)", body))
+        for key, applies in (("l1_primary", primary_l1), ("user_support", user_support and not primary_l1), ("sales", sales), ("senior", senior), ("office_only", office)):
+            if applies:
+                penalty_reasons.append({"reason": key, "points": penalties[key]})
+        # An unrecognized negative phrase is evidence for review, not a blind -40.
+    else:
+        if negative:
+            penalty_reasons.append({"reason": "legacy_negative", "points": 40})
+    penalty = sum(item["points"] for item in penalty_reasons)
     score = max(0, min(100, sum(parts.values()) - penalty))
     return {"score": score, "parts": parts, "matched_skills": matched_skills,
-            "negative_matches": negative, "version": SCHEMA_VERSION, "mode": "shadow"}
+            "negative_matches": negative, "penalty_reasons": penalty_reasons,
+            "version": SCHEMA_VERSION, "mode": "shadow"}
 
 
 def database_path():
