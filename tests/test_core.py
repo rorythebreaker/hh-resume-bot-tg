@@ -251,6 +251,7 @@ def test_upstream_automatic_application_with_fake_api(tmp_path, monkeypatch):
     from hh_cli import BotTool
     from hh_applicant_tool.tool import BaseNamespace
     from hh_applicant_tool.operations.apply_vacancies import Operation
+    monkeypatch.setattr(profiles_lib, 'get_active_profile', lambda: (None, None))
     tool=BotTool()
     args=tool._parser.parse_args(['--config-dir',str(tmp_path),'--profile','main','--no-use-ai','apply-vacancies','--search','python','--max-responses','1'],namespace=BaseNamespace())
     tool._assign_args(args)
@@ -295,6 +296,7 @@ def test_menu_nonce_rejects_old_profile(workspace,monkeypatch):
     bot.run_command.assert_not_called()
 
 def test_observed_upstream_skip_counter(monkeypatch):
+    monkeypatch.setattr(profiles_lib, 'get_active_profile', lambda: (None, None))
     from hh_cli import ObservedApplyOperation
     from hh_applicant_tool.operations.apply_vacancies import Operation
     operation=ObservedApplyOperation()
