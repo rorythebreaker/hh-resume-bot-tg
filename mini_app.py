@@ -16,6 +16,7 @@ from security import redact
 import mini_app_context as context
 import apply_captcha
 import scoring
+import scoring_config
 import profiles_lib
 
 ASSETS = Path(__file__).with_name('mini_app')
@@ -187,6 +188,36 @@ class MiniApp:
                 state = self.snapshot(session)
                 state['scoring_queue'] = scoring.list_evaluations(pid)
                 state['scoring_feedback_stats'] = scoring.feedback_stats(pid)
+                return state
+            elif route in ('/api/scoring/preview', '/api/scoring/import'):
+                pid, profile = bot.profiles_lib.get_active_profile()
+                if not pid or not profile:
+                    raise ValueError('Нет активного профиля.')
+                values = body or {}
+                if set(values) != {'dictionary'}:
+                    raise ValueError('Ожидается поле dictionary.')
+                import json
+                raw = values['dictionary']
+                if isinstance(raw, str):
+                    if len(raw) > 100_000:
+                        raise ValueError('JSON слишком большой.')
+                    try:
+                        raw = json.loads(raw)
+                    except (ValueError, TypeError):
+                        raise ValueError('Некорректный JSON.')
+                normalized = scoring_config.normalize_import(raw)
+                if route.endswith('/import'):
+                    profiles_lib.update_scoring(pid, **normalized)
+                state = self.snapshot(session)
+                state['scoring_import_preview'] = {
+                    'saved': route.endswith('/import'),
+                    'terms': {key: len(terms) for key, terms in normalized['rules'].items()},
+                    'weights': normalized['weights'],
+                    'penalties': normalized['penalties'],
+                    'thresholds': {'high': normalized['auto_threshold'], 'manual_review': normalized['review_threshold']},
+                    'target': normalized['target'],
+                    'note': 'Поиск HH, AI-фильтры и автоматические отклики не изменены.',
+                }
                 return state
             elif route == '/api/scoring/config':
                 pid, profile = bot.profiles_lib.get_active_profile()
