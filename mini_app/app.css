@@ -35,3 +35,9 @@ nav button[hidden]{display:none}
 .scoring-pager .scoring-btn{min-width:112px}
 .card:has(>details) details>button{margin:10px 8px 0 0;border:1px solid var(--tg-theme-section-separator-color,#536171);border-radius:11px;background:var(--tg-theme-button-color,#2999e8);color:var(--tg-theme-button-text-color,#fff);padding:11px 14px;font-weight:650}
 @media(max-width:390px){.scoring-vacancy{padding:12px}.scoring-decision{font-size:12px}}
+
+.scoring-facts{display:grid;gap:8px;padding:12px;border:1px solid var(--tg-theme-section-separator-color,#536171);border-radius:12px;background:var(--tg-theme-secondary-bg-color,#283545)}
+.scoring-fact{display:grid;grid-template-columns:86px minmax(0,1fr);gap:9px;font-size:13px;line-height:1.45}
+.scoring-fact span{color:var(--tg-theme-hint-color,#9aa6b4)}
+.scoring-fact strong{font-weight:600;overflow-wrap:anywhere}
+.scoring-description{white-space:pre-wrap;overflow-wrap:anywhere;max-height:380px;overflow-y:auto}
