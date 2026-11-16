@@ -59,10 +59,10 @@ def evaluate(vacancy, profile=None):
     # not to incidental references to first-line teams or SOC L1.
     penalty_reasons = []
     if config.get("dictionary_version") == "1.0":
-        primary_l1 = bool(re.search(r"(?:специалист|оператор|сотрудник|инженер)\\s+(?:технической\\s+)?поддержки.*(?:l1|1.?я линия|первой линии)|(?:help\\s?desk|service\\s?desk)\\s*(?:l1|1)", title))
+        primary_l1 = bool(re.search(r"(?:специалист|оператор|сотрудник|инженер)\s+(?:технической\s+)?поддержки.*(?:l1|1.?я линия|первой линии)|(?:help\s?desk|service\s?desk)\s*(?:l1|1)", title))
         user_support = bool(re.search(r"(?:поддержка пользователей|обращени[йя] пользователей|установка по на рабочие места)", body))
         sales = bool(re.search(r"(?:менеджер по продажам|sales manager|оператор колл.центра)", title))
-        senior = bool(re.search(r"\\b(?:senior|lead|principal)\\b|\\b(?:ведущий|старший)\\b", title) and re.search(r"(?:от 5 лет|5\\+ лет|6\\+ лет|более 5 лет)", text))
+        senior = bool(re.search(r"\b(?:senior|lead|principal)\b|\b(?:ведущий|старший)\b", title) and re.search(r"(?:от 5 лет|5\+ лет|6\+ лет|более 5 лет)", text))
         office = bool(re.search(r"(?:только офис|исключительно в офисе|строго офис)", body))
         for key, applies in (("l1_primary", primary_l1), ("user_support", user_support and not primary_l1), ("sales", sales), ("senior", senior), ("office_only", office)):
             if applies:
