@@ -155,7 +155,11 @@ def list_evaluations(profile_id, limit=30, path=None):
               WHERE f.profile_id=e.profile_id AND f.vacancy_id=e.vacancy_id
               ORDER BY f.id DESC LIMIT 1) AS decision
             FROM evaluations e WHERE e.profile_id=?
-            ORDER BY e.evaluated_at DESC LIMIT ?""",
+            ORDER BY CASE WHEN EXISTS (
+                SELECT 1 FROM feedback f
+                WHERE f.profile_id=e.profile_id AND f.vacancy_id=e.vacancy_id
+            ) THEN 1 ELSE 0 END ASC,
+            e.evaluated_at DESC LIMIT ?""",
             (profile_id, max(1, min(int(limit), 100)))).fetchall()
         return [{"vacancy_id": r["vacancy_id"], "score": r["score"],
                  "evaluated_at": r["evaluated_at"], "features": json.loads(r["features_json"]),
