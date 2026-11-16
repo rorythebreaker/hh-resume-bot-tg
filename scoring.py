@@ -117,7 +117,7 @@ def save_evaluation(profile_id, vacancy, result, path=None):
     vacancy_id = str(vacancy.get("id") or "")
     if not profile_id or not vacancy_id.isdigit():
         raise ValueError("profile_id and numeric vacancy id are required")
-    snapshot = {key: vacancy.get(key) for key in ("id", "name", "description", "snippet", "experience", "work_format", "salary", "salary_range")}
+    snapshot = {key: vacancy.get(key) for key in ("id", "name", "employer", "description", "snippet", "experience", "work_format", "salary", "salary_range", "schedule", "work_schedule_by_days", "working_hours")}
     now = datetime.now(timezone.utc).isoformat()
     with _connect(path or database_path()) as db:
         db.execute("""INSERT INTO evaluations
