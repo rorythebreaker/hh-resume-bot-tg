@@ -60,6 +60,26 @@ def normalize_import(payload):
     # Proposed penalty entries in the v1 specification are descriptive; use explicit
     # numeric penalties only when supplied under the 'penalties' key.
     penalties = validate_penalties(payload.get("penalties", DEFAULT_PENALTIES))
+    proposed = payload.get("proposed_penalties")
+    if proposed is not None:
+        mapping = {
+            "predominant_user_l1": "l1_primary",
+            "occasional_user_support": "user_support",
+            "sales_or_customer_service_primary": "sales",
+            "senior_lead_5plus_required": "senior",
+            "office_only": "office_only",
+        }
+        if not isinstance(proposed, list) or len(proposed) != len(mapping):
+            raise ValueError("Некорректный proposed_penalties.")
+        converted = {}
+        for item in proposed:
+            if not isinstance(item, dict) or item.get("id") not in mapping or type(item.get("points")) is not int or not -100 <= item["points"] <= 0:
+                raise ValueError("Некорректное правило штрафа.")
+            converted[mapping[item["id"]]] = -item["points"]
+        if set(converted) != set(mapping):
+            raise ValueError("Неполный список штрафов.")
+        if "penalties" not in payload:
+            penalties = validate_penalties(converted)
     target = payload.get("target", {})
     if not isinstance(target, dict):
         raise ValueError("target должен быть объектом.")
