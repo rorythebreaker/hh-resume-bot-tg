@@ -2,7 +2,7 @@ const tg=window.Telegram?.WebApp;
 const initData=tg?.initData||'';
 const demo=['localhost','127.0.0.1'].includes(location.hostname)&&new URLSearchParams(location.search).get('preview')==='1';
 const main=document.getElementById('main'),status=document.getElementById('status');
-let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='',scoringDraft='',scoringIndex=0,scoringFilter='all';
+let current=null,busy=false,view='main',toastTimer,inputValue='',inputNonce='',scoringDraft='',scoringIndex=0,scoringFilter='unrated';
 export function actionStyle(label){
   if(/запуст|отправить|подтверд/i.test(label))return 'primary';
   if(/удал|отказ|пауза/i.test(label))return 'danger';
@@ -190,7 +190,7 @@ function render(preserveScroll=false){
    const buttons=element('div',undefined,'scoring-decisions');
    for(const [decision,label] of [['positive','Подходит'],['negative','Не подходит'],['unsure','Сомневаюсь']]){
     const button=element('button',label,'scoring-btn scoring-decision'+(item.decision===decision?' is-selected':''));
-    button.type='button';button.onclick=()=>update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});
+    button.type='button';button.onclick=async()=>{const previousFilter=scoringFilter;scoringFilter='unrated';await update('/api/scoring/feedback',{vacancy_id:item.vacancy_id,decision,reason:reason.value||null});if(current?.scoring_queue?.some(entry=>entry.vacancy_id===item.vacancy_id&&!entry.decision)){scoringFilter=previousFilter;render(true);}};
     buttons.appendChild(button);
    }
    box.appendChild(buttons);queue.appendChild(box);
@@ -198,7 +198,7 @@ function render(preserveScroll=false){
    const prev=element('button','← Назад','scoring-btn scoring-btn-secondary');prev.disabled=scoringIndex===0;prev.onclick=()=>{scoringIndex--;render(true);};
    const next=element('button','Следующая →','scoring-btn scoring-btn-secondary');next.disabled=scoringIndex===items.length-1;next.onclick=()=>{scoringIndex++;render(true);};
    pager.appendChild(prev);pager.appendChild(next);queue.appendChild(pager);
-  }else queue.appendChild(element('p',all.length?'Нет вакансий с выбранной оценкой.':'Вакансий пока нет. Запустите обычный поиск и обновите список.','scoring-muted'));
+  }else queue.appendChild(element('p',all.length?'Нет вакансий, ожидающих оценки.':'Вакансий пока нет. Запустите обычный поиск и обновите список.','scoring-muted'));
   main.appendChild(queue);
   if(preserveScroll)window.scrollTo?.(0,pageY);
   document.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('selected',button.dataset.view===view));
