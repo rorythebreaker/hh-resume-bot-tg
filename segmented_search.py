@@ -5,7 +5,6 @@ normal duplicate, eligibility and response checks.
 """
 import datetime as dt
 import json
-import os
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -31,10 +30,11 @@ def discover(account, params, start, end, state_path, max_requests=250, max_dept
         loaded = json.loads(state_path.read_text(encoding="utf-8"))
         if loaded.get("params") == params and loaded.get("start") == iso(start) and loaded.get("end") == iso(end):
             state.update(loaded)
-    else:
+    if not state["pending"] and not state["completed"]:
         state["pending"] = [[iso(start), iso(end), 0]]
     state.update(params=params, start=iso(start), end=iso(end))
     requests = 0
+    state.setdefault("overflow", [])
 
     def save():
         atomic_write(state_path, json.dumps(state, ensure_ascii=False))
@@ -77,6 +77,8 @@ def discover(account, params, start, end, state_path, max_requests=250, max_dept
                 state["vacancies"][vid] = vacancy
         state["completed"].append([a, b, found])
         state["pending"].pop(0)
-        state["requests"] += requests
+        state["requests"] += len(batch) // 100 + 1
         save()
+    state["requests_last_run"] = requests
+    save()
     return state
