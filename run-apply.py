@@ -223,8 +223,7 @@ def main():
         from segmented_search import discover, UTC
         from storage import atomic_write
         now = dt.datetime.now(UTC)
-        days = max(1, min(int(os.environ.get("APPLY_DISCOVERY_DAYS", "7")), 30))
-        start = now - dt.timedelta(days=days)
+        days = max(1, min(int(os.environ.get("APPLY_DISCOVERY_DAYS", "7")), 365))
         params = {"text": search, "area": area}
         if f["experience"]:
             params["experience"] = f["experience"]
@@ -239,7 +238,7 @@ def main():
                 params["work_format"] = ",".join(f["work_format"])
         checkpoint = Path(os.environ.get("CONFIG_DIR", "/app/config")) / hh_account / "discovery" / (pid + ".json")
         # Keep the window stable between runs so the checkpoint can resume.
-        window_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        window_end = now.replace(minute=0, second=0, microsecond=0)
         window_start = window_end - dt.timedelta(days=days)
         try:
             state = discover(hh_account, params, window_start, window_end, checkpoint,
@@ -250,6 +249,7 @@ def main():
         print(f"DISCOVERY: unique={len(state['vacancies'])} completed={len(state['completed'])} pending={len(state['pending'])} overflow={len(state.get('overflow', []))}", flush=True)
         if state["pending"] or state.get("overflow"):
             print("DISCOVERY_INCOMPLETE: checkpoint saved; no applications sent", flush=True)
+            report(0, 0, "discovery_incomplete")
             return 2
         manifest = checkpoint.with_suffix(".vacancies.json")
         atomic_write(manifest, json.dumps(list(state["vacancies"].values()), ensure_ascii=False))
