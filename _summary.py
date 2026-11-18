@@ -94,7 +94,7 @@ sent = int(sent_match_list[-1]) if sent_match_list else 0
 posts_ok = len(re.findall(r"201 POST https://api\.hh\.ru/negotiations", log))
 # The runner's aggregate is authoritative; avoid mixing counters.
 sent = max(sent, posts_ok)
-runner_sent = re.findall(r"^Отправлено:\\s*(\\d+)\\s*$", runner_out, re.MULTILINE)
+runner_sent = re.findall(r"^Отправлено:\s*(\d+)\s*$", runner_out, re.MULTILINE)
 if runner_sent:
     sent = int(runner_sent[-1])
 
@@ -102,15 +102,36 @@ if runner_sent:
 # Count processed candidates from the core's structured metrics, if available.
 # Do not claim zero attempts when the runner did not emit a counter.
 import json
-core_metrics = re.findall(r"^CORE_METRICS:\s*(\{[^\n]*\})", runner_out, re.MULTILINE)
-tried = None
-if core_metrics:
+
+
+def read_metrics(marker):
+    matches = re.findall(rf"^{marker}: (\{{[^\n]*\}})$", runner_out, re.MULTILINE)
+    if not matches:
+        return {}
     try:
-        found = json.loads(core_metrics[-1]).get("found")
-        if type(found) is int and found >= 0:
-            tried = found
-    except (ValueError, TypeError):
-        pass
+        return json.loads(matches[-1])
+    except ValueError:
+        return {}
+
+
+core = read_metrics("CORE_METRICS")
+tried = core.get("found")
+discovery = read_metrics("DISCOVERY_METRICS")
+issue = discovery.get("issue") or {}
+discovery_lines = []
+if discovery:
+    discovery_lines.extend([
+        f"📋 Уникальных вакансий в завершённых сегментах: {discovery['unique']}",
+        f"📅 Сегменты: завершено {discovery['completed']}, осталось {discovery['pending']}",
+        f"📡 Запросов поиска: {discovery['requests']} за прогон, {discovery['requests_total']} за окно",
+    ])
+    if discovery["overflow"]:
+        discovery_lines.append("⚠️ Сегмент достиг потолка выдачи HH.")
+    elif issue.get("code") == "api_error":
+        status = issue.get("status")
+        discovery_lines.append(f"⚠️ Поиск остановлен ответом HH HTTP {status}." if status else "⚠️ Ошибка соединения или ответа HH.")
+    elif issue:
+        discovery_lines.append("⚠️ Данные страницы расходятся с параметрами выдачи. Сегмент будет прочитан заново.")
 
 # Считаем ошибки, но игнорируем безвредные:
 # - BrokenPipeError: артефакт SIGPIPE при завершении pipe (tee), не настоящая ошибка
@@ -139,6 +160,9 @@ STOP_REASONS = {
     "completed": ("ℹ️", "Прогон завершён."),
     "max_responses": ("🎯", "Достигнут лимит откликов за один запуск (--max-responses). Увеличьте его в фильтрах профиля."),
     "scan_completed": ("ℹ️", "Обработан настроенный диапазон страниц поиска; другие вакансии могут оставаться."),
+    "segmented_completed": ("ℹ️", "Сегментированный поиск и обработка завершены."),
+    "discovery_incomplete": ("⏸", "Поиск приостановлен. Прогресс сохранён, отклики не отправлялись."),
+    "discovery_error": ("❌", "Сегментированный поиск прерван ошибкой. Отклики не отправлялись."),
     "scan_no_applications": ("ℹ️", "В просмотренном диапазоне новых откликов нет."),
     "limit_reported": ("⚠️", "Ядро сообщило об ограничении откликов; проверьте журнал."),
     "hh_verification_required": ("STOP", "Остановлено: HH требует проверку или ограничил доступ."),
@@ -181,6 +205,7 @@ if profile_display:
     lines.append(f"👤 Профиль: <b>{profile_display}</b>")
 lines.extend([
     f"📤 Отправлено: <b>{sent}</b>",
+    *discovery_lines,
     *([f"🔍 Обработано вакансий: {tried}"] if tried is not None else []),
     f"🐛 Ошибок: {errors}",
 ] + ([f"🔁 Проходов: {passes_done}"] if passes_done > 1 else []) + [
