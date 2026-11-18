@@ -10,9 +10,10 @@ import sys
 import time
 import subprocess
 import json
+from datetime import datetime, timedelta
 from hh_compat import cli_args
 from security import redact
-from storage import file_lock
+from storage import atomic_write, file_lock
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -98,6 +99,37 @@ def run_pass(args):
         except subprocess.TimeoutExpired:
             proc.kill(); rc = proc.wait()
     return (sent if core_seen else post_count), limit_reached, blocked, rc
+
+
+def segmented_manifest(pid, account, search, area, filters, dry_run):
+    from segmented_search import discover, UTC, vacancy_search_params
+
+    days = filters["period"] or int(os.environ.get("APPLY_DISCOVERY_DAYS", "7"))
+    days = max(1, min(days, 365))
+    budget = max(1, min(int(os.environ.get("APPLY_DISCOVERY_REQUESTS", "250")), 1000))
+    now = datetime.now(UTC)
+    # HH rounds publication date bounds to five minutes.
+    end = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
+    start = end - timedelta(days=days)
+    directory = Path(os.environ.get("CONFIG_DIR", "/app/config")) / account / "discovery"
+    checkpoint = directory / (f"{pid}.dry-run.json" if dry_run else f"{pid}.json")
+    params = vacancy_search_params(search, area, filters)
+    state = discover(account, params, start, end, checkpoint, max_requests=budget)
+    metrics = {
+        "start": state["start"], "end": state["end"], "unique": len(state["vacancies"]),
+        "completed": len(state["completed"]), "pending": len(state["pending"]),
+        "overflow": state["overflow"], "issue": state["issue"],
+        "requests": state["requests_last_run"], "requests_total": state["requests"],
+        "next_page": state["page"]["next"] if state["page"] else 0,
+    }
+    print("DISCOVERY_METRICS: " + json.dumps(metrics, ensure_ascii=False), flush=True)
+    if state["pending"]:
+        return None
+    manifest = checkpoint.with_suffix(".vacancies.json")
+    atomic_write(manifest, json.dumps(list(state["vacancies"].values()), ensure_ascii=False))
+    # The next independent run must fetch fresh HH relations and a new date range.
+    checkpoint.unlink()
+    return manifest
 
 
 def main():
@@ -210,49 +242,28 @@ def main():
 
     # Rate limiting belongs in 2.5.x config.toml.
 
-    if ai["dry_run"]:
+    dry_run = ai["dry_run"] or os.environ.get("APPLY_DRY_RUN") == "1"
+    if dry_run:
         args.append("--dry-run")
 
     if ai["enabled"] or ai["filter"]:
         print(f"AI: messages={ai['enabled']}, filter={ai['filter'] or 'off'}, "
-              f"rate_limit={ai['rate_limit']}, dry_run={ai['dry_run']}")
+              f"rate_limit={ai['rate_limit']}, dry_run={dry_run}")
 
     # Opt-in segmented discovery. Never apply from a partial manifest.
-    if os.environ.get("APPLY_SEGMENTED", "0") == "1":
-        import datetime as dt
-        from segmented_search import discover, UTC
-        from storage import atomic_write
-        now = dt.datetime.now(UTC)
-        days = max(1, min(int(os.environ.get("APPLY_DISCOVERY_DAYS", "7")), 365))
-        params = {"text": search, "area": area}
-        if f["experience"]:
-            params["experience"] = f["experience"]
-        if f["salary"]:
-            params["salary"] = f["salary"]
-        if f["only_with_salary"]:
-            params["only_with_salary"] = "true"
-        if not f["geo_enabled"]:
-            if f["schedule"]:
-                params["schedule"] = f["schedule"]
-            if f["work_format"]:
-                params["work_format"] = ",".join(f["work_format"])
-        checkpoint = Path(os.environ.get("CONFIG_DIR", "/app/config")) / hh_account / "discovery" / (pid + ".json")
-        # Keep the window stable between runs so the checkpoint can resume.
-        window_end = now.replace(minute=0, second=0, microsecond=0)
-        window_start = window_end - dt.timedelta(days=days)
+    segmented = os.environ.get("APPLY_SEGMENTED") == "1"
+    if segmented:
         try:
-            state = discover(hh_account, params, window_start, window_end, checkpoint,
-                             max_requests=max(1, min(int(os.environ.get("APPLY_DISCOVERY_REQUESTS", "250")), 1000)))
-        except Exception as exc:
-            print("DISCOVERY_ERROR: " + str(exc), file=sys.stderr)
+            manifest = segmented_manifest(pid, hh_account, search, area, f, dry_run)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            print("DISCOVERY_ERROR: " + redact(str(exc)), file=sys.stderr)
+            METRICS["errors"] += 1
+            report(0, 0, "discovery_error")
             return 2
-        print(f"DISCOVERY: unique={len(state['vacancies'])} completed={len(state['completed'])} pending={len(state['pending'])} overflow={len(state.get('overflow', []))}", flush=True)
-        if state["pending"] or state.get("overflow"):
+        if manifest is None:
             print("DISCOVERY_INCOMPLETE: checkpoint saved; no applications sent", flush=True)
             report(0, 0, "discovery_incomplete")
             return 2
-        manifest = checkpoint.with_suffix(".vacancies.json")
-        atomic_write(manifest, json.dumps(list(state["vacancies"].values()), ensure_ascii=False))
         os.environ["HH_BOT_VACANCY_MANIFEST"] = str(manifest)
 
     print(f"Exec: {args}", flush=True)
@@ -295,7 +306,7 @@ def main():
         if limit_reached:
             stop_reason = "limit_reported"
             break
-        if total_sent >= max_responses and not ai["dry_run"]:
+        if total_sent >= max_responses and not dry_run:
             stop_reason = "max_responses"
             break
         if sent_this_pass == 0:
@@ -305,8 +316,10 @@ def main():
         if attempt < max_passes:
             time.sleep(PASS_DELAY)
 
-    if ai["dry_run"]:
+    if dry_run:
         stop_reason = "dry_run"
+    elif stop_reason == "completed" and segmented:
+        stop_reason = "segmented_completed"
     elif stop_reason == "completed":
         stop_reason = "scan_completed"
     report(total_sent, passes_done, stop_reason)

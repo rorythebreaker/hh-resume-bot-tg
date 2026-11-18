@@ -72,6 +72,21 @@ CI tests Python 3.12, shell syntax, Docker build and all three services against 
 
 [Requirements audit](AUDIT.md) lists every requirement with evidence and limitations. See [installation](INSTALL.md), [migration and rollback](MIGRATION_2_5.md), and [changelog](CHANGELOG.md).
 
+## Segmented vacancy search
+
+Set `APPLY_SEGMENTED=1` in the Compose environment and recreate the services to enable it for scheduled and manual runs. The profile's publication period takes precedence over `APPLY_DISCOVERY_DAYS` (default 7). `APPLY_DISCOVERY_REQUESTS` limits the number of search pages requested per run (default 250). The search freezes a date window ending at the latest five-minute boundary used by HH, visits newer segments first, and applies the profile's search sort within each segment.
+
+If a run stops during search, start it again with the same search filters to resume its checkpoint, even after the clock advances. An inconsistent page restarts its segment. A failed API request resumes from the last saved page. A five-minute segment that reaches the HH result cap is reported as incomplete. Applications start only after all segments finish. The profile's response limit still applies to applications.
+
+To exercise discovery and the application filters without sending responses, run the following from a deployed Compose project with the active profile and its HH account configured:
+
+```bash
+docker compose exec --user 1000:1000 -e APPLY_SEGMENTED=1 -e APPLY_DRY_RUN=1 \
+  -e APPLY_IGNORE_PAUSE=1 hh_applicant_tool python3 /app/run-apply.py
+```
+
+Use the same Compose file and environment as the deployment. The dry run has its own checkpoint. Inspect `DISCOVERY_METRICS` for the fixed dates, unique IDs in completed segments, remaining segments, and the next page. `CORE_METRICS` reports the candidates the application worker traversed. A completed dry run has no pending or saturated segments and reports zero responses sent.
+
 Upstream: [hh-applicant-tool](https://github.com/s3rgeym/hh-applicant-tool), a separate dependency under its own license. Upstream sources are not copied here.
 
 ## HTMLBubbles menus
