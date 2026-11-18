@@ -133,12 +133,15 @@ def test_runner_dry_run_waits_for_complete_manifest(tmp_path, monkeypatch, capsy
     main = runpy.run_path(str(root / "run-apply.py"))["main"]
     profile = {
         "search": "engineer", "area": "113",
-        "filters": {"period": 2, "excluded_employer_ids": ["42"], "order_by": "publication_time"},
+        "filters": {
+            "period": 2, "excluded_employer_ids": ["42"],
+            "order_by": "publication_time", "segmented_search": True,
+        },
     }
     monkeypatch.setattr(profiles_lib, "get_active_profile", lambda: ("test", profile))
     monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("APP_DIR", str(root))
-    monkeypatch.setenv("APPLY_SEGMENTED", "1")
+    monkeypatch.setenv("APPLY_SEGMENTED", "0")
     monkeypatch.setenv("APPLY_DISCOVERY_DAYS", "7")
     monkeypatch.setenv("APPLY_DISCOVERY_REQUESTS", "1")
     monkeypatch.setenv("APPLY_DRY_RUN", "1")

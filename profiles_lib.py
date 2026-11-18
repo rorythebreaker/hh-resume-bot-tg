@@ -156,6 +156,7 @@ DEFAULT_FILTERS = {
     "salary": 0,             # --salary
     "only_with_salary": False,
     "period": 0,             # --period, дней
+    "segmented_search": None,  # inherit APPLY_SEGMENTED until explicitly set
     "order_by": "",          # --order-by
     "skip_tests": False,     # --skip-tests
     "max_responses": 50,
@@ -191,7 +192,14 @@ def get_filters(profile):
             f[key] = 0
     for key in ("only_with_salary", "skip_tests", "send_email", "geo_enabled"):
         f[key] = bool(f[key])
+    if type(f["segmented_search"]) is not bool:
+        f["segmented_search"] = None
     return f
+
+
+def segmented_search_enabled(filters):
+    value = filters["segmented_search"]
+    return os.environ.get("APPLY_SEGMENTED") == "1" if value is None else value
 
 
 @_serialized
