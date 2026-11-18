@@ -2351,6 +2351,7 @@ def build_menu_filters():
     formats = ", ".join(FILTER_LABELS["work_format"][v] for v in f["work_format"]) or "любой"
     banned = len(f["excluded_employer_ids"])
     geo_status = "включён" if f["geo_enabled"] else "выключен"
+    segmented_status = "включён" if profiles_lib.segmented_search_enabled(f) else "выключен"
     return {
         "title": (f"🔎 <b>Фильтры поиска «{html.escape(_active_profile_label())}»</b>\n"
                   "Отсекают вакансии на стороне HH — до отклика и до вызова AI, "
@@ -2364,6 +2365,7 @@ def build_menu_filters():
             [(f"💰 Зарплата от: {f['salary'] or 'любой'}", "cmd:/f_salary")],
             [(f"💵 Только с зарплатой: {_ai_flag(f['only_with_salary'])}", "flt:only_with_salary")],
             [(f"📅 Период: {str(f['period']) + ' дн' if f['period'] else 'любой'}", "cmd:/f_period")],
+            [(f"🔎 Сегментированный поиск: {segmented_status}", "flt:segmented_search")],
             [(f"↕️ Сортировка: {FILTER_LABELS['order_by'][f['order_by']]}", "menu:f_order")],
             [(f"🧪 Пропускать тесты: {_ai_flag(f['skip_tests'])}", "flt:skip_tests")],
             [(f"📧 Письмо на email: {_ai_flag(f['send_email'])}", "flt:send_email")],
@@ -2893,7 +2895,8 @@ def handle_callback(chat_id, message_id, data):
                 return
             if data.startswith("flt:"):
                 field = data[4:]
-                profiles_lib.update_filters(pid, **{field: not f[field]})
+                enabled = profiles_lib.segmented_search_enabled(f) if field == "segmented_search" else f[field]
+                profiles_lib.update_filters(pid, **{field: not enabled})
             elif data.startswith("fset:"):
                 _, field, value = data.split(":", 2)
                 profiles_lib.update_filters(pid, **{field: value})

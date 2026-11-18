@@ -74,14 +74,14 @@ CI tests Python 3.12, shell syntax, Docker build and all three services against 
 
 ## Segmented vacancy search
 
-Set `APPLY_SEGMENTED=1` in the Compose environment and recreate the services to enable it for scheduled and manual runs. The profile's publication period takes precedence over `APPLY_DISCOVERY_DAYS` (default 7). `APPLY_DISCOVERY_REQUESTS` limits the number of search pages requested per run (default 250). The search freezes a date window ending at the latest five-minute boundary used by HH, visits newer segments first, and applies the profile's search sort within each segment.
+In the Mini App, open «Профиль → Фильтры поиска → Сегментированный поиск». The setting applies to the selected profile's next scheduled or manual run. Profiles without a saved setting use the Compose value `APPLY_SEGMENTED` (default 0). The profile's publication period takes precedence over `APPLY_DISCOVERY_DAYS` (default 7). `APPLY_DISCOVERY_REQUESTS` limits the number of search pages requested per run (default 250). The search freezes a date window ending at the latest five-minute boundary used by HH, visits newer segments first, and applies the profile's search sort within each segment.
 
 If a run stops during search, start it again with the same search filters to resume its checkpoint, even after the clock advances. An inconsistent page restarts its segment. A failed API request resumes from the last saved page. A five-minute segment that reaches the HH result cap is reported as incomplete. Applications start only after all segments finish. The profile's response limit still applies to applications.
 
-To exercise discovery and the application filters without sending responses, run the following from a deployed Compose project with the active profile and its HH account configured:
+With segmented search enabled for the active profile and its HH account configured, run the following from the deployed Compose project to exercise discovery and the application filters without sending responses:
 
 ```bash
-docker compose exec --user 1000:1000 -e APPLY_SEGMENTED=1 -e APPLY_DRY_RUN=1 \
+docker compose exec --user 1000:1000 -e APPLY_DRY_RUN=1 \
   -e APPLY_IGNORE_PAUSE=1 hh_applicant_tool python3 /app/run-apply.py
 ```
 

@@ -68,6 +68,34 @@ def test_generic_menu_actions_are_available_in_app(app):
     expected=app.bot.build_menu_profile()
     assert [v[1] for v in session.actions.values()]==[payload for row in expected['rows'] for _,payload in row]
 
+
+def test_segmented_search_toggle_is_saved_per_profile(app, monkeypatch):
+    monkeypatch.setenv("APPLY_SEGMENTED", "1")
+    profiles = app.bot.profiles_lib
+    pid, _ = profiles.get_active_profile()
+    other = profiles.add_profile("Other", "other", "sre", "letter_default.txt")
+    profiles.set_active_profile(pid)
+    raw = signed()
+    app.request(raw, "/api/view", {"name": "profile"})
+    session = app.session(raw)
+
+    def click(payload):
+        return app.request(raw, "/api/action", {"id": action_id(session, payload)})
+
+    def label(state):
+        return next(button["label"] for row in state["menu"]["rows"] for button in row
+                    if "Сегментированный поиск" in button["label"])
+
+    assert label(click("menu:filters")).endswith("включён")
+    assert label(click("flt:segmented_search")).endswith("выключен")
+    saved = profiles.load_profiles()["profiles"]
+    assert saved[pid]["filters"]["segmented_search"] is False
+    assert profiles.get_filters(saved[other])["segmented_search"] is None
+    assert label(click("flt:segmented_search")).endswith("включён")
+    assert profiles.load_profiles()["profiles"][pid]["filters"]["segmented_search"] is True
+    app.bot.api_call.assert_not_called()
+
+
 def test_unknown_action_cannot_invoke_bot_handler(app,monkeypatch):
     dispatch=Mock();monkeypatch.setattr(app.bot,'handle_callback',dispatch)
     app.request(signed(),'/api/state')

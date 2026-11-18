@@ -251,7 +251,7 @@ def main():
               f"rate_limit={ai['rate_limit']}, dry_run={dry_run}")
 
     # Opt-in segmented discovery. Never apply from a partial manifest.
-    segmented = os.environ.get("APPLY_SEGMENTED") == "1"
+    segmented = profiles_lib.segmented_search_enabled(f)
     if segmented:
         try:
             manifest = segmented_manifest(pid, hh_account, search, area, f, dry_run)
