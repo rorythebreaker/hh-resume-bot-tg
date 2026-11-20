@@ -1706,8 +1706,8 @@ def cmd_apply_links_prompt():
     PENDING["action"] = "apply_links"
     return (f"🎯 <b>Ручной отклик</b>\nПрофиль: <b>{html.escape(_active_profile_label())}</b>\n"
             f"Свободно слотов: <b>{state['free_now']}</b> из {HH_DAILY_LIMIT}\n\n"
-            "Пришли ссылки на вакансии одним сообщением — по одной в строке или через пробел. "
-            "Можно просто номера.\n"
+            "Вставь ссылки на вакансии или текст из «Поделиться» в HH. "
+            "Можно также прислать список номеров вакансий.\n"
             "Письмо возьмётся из профиля, плейсхолдеры подставятся как при обычной рассылке.\n\n"
             "/cancel — отмена.")
 
@@ -2813,7 +2813,9 @@ def handle_callback(chat_id, message_id, data):
     if data == 'menu:schedule':
         send_menu(chat_id, schedule_menu(), edit_message_id=message_id); return
     if data.startswith('manual:'):
-        return manual_flow.confirm(sys.modules[__name__], chat_id, data)
+        if manual_flow.confirm(sys.modules[__name__], chat_id, data):
+            send_menu(chat_id, build_menu_ctl(), edit_message_id=message_id)
+        return
     if data.startswith(('runconfirm:', 'runcancel:')):
         item = _RUN_CONFIRM.pop(str(chat_id), None)
         token = data.split(':', 1)[1]

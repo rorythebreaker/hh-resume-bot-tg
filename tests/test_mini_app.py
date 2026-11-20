@@ -163,6 +163,63 @@ def test_async_manual_preview_stays_in_app(app,monkeypatch):
     assert any(v[1].startswith('manual:') for v in session.actions.values())
     assert all(call.args[0]!='sendWidget' for call in app.bot.api_call.call_args_list)
 
+@pytest.mark.parametrize("mode", ["plain", "cancel"])
+def test_manual_shared_vacancies_keep_confirmation_until_used(app, monkeypatch, mode):
+    ids = [str(139704252 + offset) for offset in range(13)]
+    shared = "".join(
+        f"Вакансия:\nhttps://hh.ru/vacancy/{vid}?from=share_android&trace=123456789\n\n"
+        "Отправлено с помощью мобильного приложения hh https://hh.ru/mobile?from=share_android"
+        for vid in ids
+    )
+    shared = "Сообщение 123456789, зарплата 150000\n" + shared
+
+    def hh_request(account, path, **kwargs):
+        if path.startswith("/vacancies/"):
+            vid = path.rsplit("/", 1)[-1]
+            return {"id": vid, "name": f"Engineer {vid}"}
+        return {}
+
+    request = Mock(side_effect=hh_request)
+    monkeypatch.setattr(manual_flow.hh_api, "request", request)
+    post = Mock(return_value=(True, ""))
+    monkeypatch.setattr(app.bot, "hh_post_negotiation", post)
+    monkeypatch.setattr(app.bot, "append_tool_log", Mock())
+    monkeypatch.setattr(app.bot, "parse_log_applies", lambda: [])
+    monkeypatch.setattr(manual_flow, "_pending", {})
+    app.bot.PAUSE_FLAG.touch()
+
+    class Immediate:
+        def __init__(self, target, **options):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(context, "make_thread", Immediate)
+    raw = signed()
+    app.request(raw, "/api/view", {"name": "ctl"})
+    session = app.session(raw)
+    state = app.request(raw, "/api/action", {"id": action_id(session, "cmd:/apply_links")})
+    preview = app.request(raw, "/api/input", {"nonce": state["input"]["nonce"], "text": shared})
+    assert [call.args[1] for call in request.call_args_list] == [f"/vacancies/{vid}" for vid in ids]
+    assert app.request(raw, "/api/state")["menu"] == preview["menu"]
+    post.assert_not_called()
+
+    key = next(key for key, (_, payload) in session.actions.items() if payload.endswith(":" + mode))
+    state = app.request(raw, "/api/action", {"id": key})
+    assert "Управление" in state["menu"]["title"]
+    assert app.bot.PAUSE_FLAG.exists()
+    if mode == "plain":
+        assert [call.args[0] for call in post.call_args_list] == ids
+        assert any("Отправлено: 13" in m["text"] for m in state["messages"])
+    else:
+        post.assert_not_called()
+        assert any("Отклик отменён" in m["text"] for m in state["messages"])
+    with pytest.raises(ValueError, match="устарела"):
+        app.request(raw, "/api/action", {"id": key})
+    assert post.call_count == (len(ids) if mode == "plain" else 0)
+
+
 def test_captcha_captured_only_for_owner_session(app):
     raw=signed();session=app.session(raw)
     app.bot.AUTH_DIALOG['active']=True

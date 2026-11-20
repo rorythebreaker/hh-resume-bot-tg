@@ -14,10 +14,19 @@ import hh_api
 
 _pending = {}
 _guard = threading.Lock()
-_IDS = re.compile(r'(?:https?://(?:[a-z0-9-]+\.)?hh\.ru/vacancy/([0-9]+))|(?<![\w/])([0-9]{5,12})(?!\w)', re.I)
+_VACANCY_URL = re.compile(
+    r'https?://(?:[a-z0-9-]+\.)*hh\.ru/vacancy/([0-9]+)(?![\w%-])',
+    re.I,
+)
+_ID_LIST = re.compile(r'[0-9]{5,12}(?:[\s,;]+[0-9]{5,12})*')
+
 
 def parse_ids(text):
-    return list(dict.fromkeys(a or b for a, b in _IDS.findall(text or '')))
+    text = (text or '').strip()
+    ids = _VACANCY_URL.findall(text)
+    if not ids and _ID_LIST.fullmatch(text):
+        ids = re.split(r'[\s,;]+', text)
+    return list(dict.fromkeys(ids))
 
 def prepare(bot, chat_id, text):
     pid, profile = profiles_lib.get_active_profile()
@@ -56,15 +65,17 @@ def prepare(bot, chat_id, text):
 
 def confirm(bot, chat_id, data):
     _, token, mode = data.split(':', 2)
+    if mode not in ('plain', 'ai', 'cancel'):
+        return False
     with _guard:
         item = _pending.get(str(chat_id))
         if not item or item[0] != token or item[1] < time.monotonic():
             bot.send(chat_id, 'Кнопка устарела или уже использована. Подготовьте отклик заново.')
-            return
+            return False
         del _pending[str(chat_id)]
     if mode == 'cancel':
-        bot.send(chat_id, 'Отклик отменён.'); return
-    if mode not in ('plain', 'ai'): return
+        bot.send(chat_id, 'Отклик отменён.')
+        return True
     _, _, pid, profile, vacancies = item
     def runner():
         sent = skipped = errors = 0
@@ -74,8 +85,8 @@ def confirm(bot, chat_id, data):
             with file_lock(bot.CONFIG_DIR / '.apply.lock', blocking=False), profiles_lib.profile_context(pid, profile):
                 me = hh_api.request(profile['hh_account'], '/me', captcha_ui=True)
                 template = profiles_lib.get_letter_path(profile).read_text(encoding='utf-8')
+                # Confirmation is an explicit manual run, even while the schedule is paused.
                 for old in vacancies:
-                    if bot.is_paused(): break
                     vid = str(old['id'])
                     v = hh_api.request(profile['hh_account'], f'/vacancies/{vid}', captcha_ui=True)
                     if v.get('archived') or set(v.get('relations') or []) & {'got_response', 'got_rejection'}:
@@ -109,6 +120,7 @@ def confirm(bot, chat_id, data):
             summary += ' Причина остановки: ' + html.escape(failure)
         bot.send(chat_id, summary)
     mini_app_context.make_thread(target=runner, daemon=True).start()
+    return True
 
 def generate_letter(profile, vacancy):
     from hh_cli import BotTool

@@ -168,7 +168,15 @@ def test_captcha_partial_and_complete(monkeypatch,tmp_path):
     assert status=='done' and b'captcha image' in clean
     assert (tmp_path/'captcha.png').read_bytes()==png
 
-@pytest.mark.parametrize('text,expected', [('https://hh.ru/vacancy/139159350',['139159350']),('https://spb.hh.ru/vacancy/139159350?x=1',['139159350']),('139159350 139159350',['139159350']),('hello',[])])
+@pytest.mark.parametrize('text,expected', [
+    ('https://hh.ru/vacancy/139159350', ['139159350']),
+    ('https://spb.hh.ru/vacancy/139159350?x=1', ['139159350']),
+    ('139159350, 139159350; 139159351', ['139159350', '139159351']),
+    ('зарплата 150000 https://hh.ru/mobile?trace=123456789', []),
+    ('https://hh.ru/vacancy/139159350extra https://example.org/vacancy/139159351', []),
+    ('[https://hh.ru/vacancy/139159350] — повтор: https://hh.ru/vacancy/139159350', ['139159350']),
+    ('hello', []),
+])
 def test_manual_ids(text,expected):
     assert manual_flow.parse_ids(text)==expected
 
