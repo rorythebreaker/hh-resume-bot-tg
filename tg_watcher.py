@@ -19,6 +19,7 @@ import urllib.parse
 from pathlib import Path
 from storage import atomic_write
 from security import redact
+from vacancy_metadata import FACT_FIELDS, vacancy_metadata_path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import profiles_lib
@@ -36,7 +37,6 @@ AUTH_ERR_RE = re.compile(r"Refresh token required|Требуется автор�
 
 NAME_CACHE = {}
 VACANCY_FACTS = {}
-FACT_FIELDS = ('salary','salary_range','work_format','experience','schedule','work_schedule_by_days','working_hours')
 
 
 def remember_facts(key, data):
@@ -118,8 +118,8 @@ def hh_get_vacancy(vid, hh_account):
         return '', '', ''
     key=(hh_account,str(vid))
     fallback=('', '', '')
-    metadata=CONFIG_DIR/hh_account/'.vacancy-meta'/(str(vid)+'.json')
     try:
+        metadata=vacancy_metadata_path(CONFIG_DIR,hh_account,vid)
         stored=json.loads(metadata.read_text(encoding='utf-8'))
         remember_facts(key,stored)
         if stored.get('name'):

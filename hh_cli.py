@@ -5,11 +5,11 @@ import logging
 import os
 import sys
 from functools import cached_property
-from pathlib import Path
 from hh_applicant_tool.tool import HHApplicantTool
 from hh_applicant_tool.operations.apply_vacancies import Operation as ApplyOperation
 from hh_applicant_tool.api.errors import LimitExceeded, Redirect
 from security import SecretFilter
+from vacancy_metadata import save_vacancy_metadata
 
 class ObservedApplyOperation(ApplyOperation):
     """Count upstream decisions, without duplicating its application logic."""
@@ -88,38 +88,26 @@ class ObservedApplyOperation(ApplyOperation):
                 return
         # Retain the public metadata already fetched by the application worker.
         # The notification watcher may not have a usable HH token of its own.
-        try:
-            from storage import atomic_write
-            from hh_compat import validate_account
-            import profiles_lib
-            _, profile=profiles_lib.get_active_profile()
-            vid=str(vacancy.get('id',''))
-            if vid.isdigit() and profile:
-                details=vacancy
-                if not vacancy.get('description'):
-                    try:
-                        full=self.api_client.get('/vacancies/'+vid)
-                        if isinstance(full,dict) and full.get('description'):
-                            details={**vacancy,**full}
-                    except Exception:
-                        logging.getLogger(__name__).warning('Full vacancy description unavailable for %s',vid)
-                account=validate_account(profile.get('hh_account','main'))
-                path=Path(os.environ.get('CONFIG_DIR','/app/config'))/account/'.vacancy-meta'/(vid+'.json')
-                atomic_write(path,json.dumps({'name':vacancy.get('name',''),
-                    'employer':(vacancy.get('employer') or {}).get('name',''),
-                    'description':str(details.get('description') or ''),
-                    **{key:details.get(key) for key in ('salary','salary_range','work_format','experience','schedule','work_schedule_by_days','working_hours')},
-                    'complete':bool(details.get('description'))},ensure_ascii=False))
-        except (OSError,ValueError,TypeError):
-            logging.getLogger(__name__).warning('Could not persist vacancy notification metadata')
+        details = vacancy
+        vid = str(vacancy.get('id', ''))
+        if vid.isdigit() and active_profile:
+            if not vacancy.get('description'):
+                try:
+                    full = self.api_client.get('/vacancies/' + vid)
+                    if isinstance(full, dict) and full.get('description'):
+                        details = vacancy | full
+                except Exception:
+                    logging.getLogger(__name__).warning('Full vacancy description unavailable for %s', vid)
+            save_vacancy_metadata(os.environ.get('CONFIG_DIR', '/app/config'),
+                                  active_profile.get('hh_account', 'main'), vid, details)
         # Shadow scoring observes candidates only; it must never block an application.
         try:
             import scoring
             import profiles_lib
             pid, profile = profiles_lib.get_active_profile()
             if pid and profile and profiles_lib.get_scoring(profile)['enabled']:
-                score_result = scoring.evaluate(details if 'details' in locals() else vacancy, profile)
-                scoring.save_evaluation(pid, details if 'details' in locals() else vacancy, score_result)
+                score_result = scoring.evaluate(details, profile)
+                scoring.save_evaluation(pid, details, score_result)
                 self.metrics['scored'] = self.metrics.get('scored', 0) + 1
         except Exception:
             logging.getLogger(__name__).exception('Shadow scoring failed; application continues')

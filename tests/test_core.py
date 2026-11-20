@@ -207,6 +207,70 @@ def test_preview_never_posts_and_confirmation_is_single_use(workspace,monkeypatc
     bot.hh_post_negotiation.assert_called_once()
     assert bot.hh_post_negotiation.call_args.args[1]=='resume123'
 
+def test_manual_application_notification_uses_details_without_another_hh_lookup(workspace, monkeypatch):
+    import tg_bot as bot
+    import tg_watcher as watcher
+
+    root, _ = workspace
+    config = root / 'config'
+    for module in (bot, watcher):
+        monkeypatch.setattr(module, 'CONFIG_DIR', config)
+    monkeypatch.setattr(watcher, 'STATE_FILE', config / 'watcher-state.json')
+    monkeypatch.setattr(watcher, 'read_token', Mock(return_value=None))
+    lookup = Mock(side_effect=OSError('HH unavailable to watcher'))
+    monkeypatch.setattr(watcher.urllib.request, 'urlopen', lookup)
+    notification = Mock(return_value=True)
+    monkeypatch.setattr(watcher, 'send_notification', notification)
+    monkeypatch.setattr(bot, 'send', Mock())
+    menu = Mock()
+    monkeypatch.setattr(bot, 'send_menu', menu)
+    monkeypatch.setattr(bot, 'parse_log_applies', lambda: [])
+    monkeypatch.setattr(manual_flow, '_pending', {})
+
+    class Immediate:
+        def __init__(self, target, **options):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(manual_flow.mini_app_context, 'make_thread', Immediate)
+    vacancy = {
+        'id': '139686676', 'name': 'Инженер инфраструктуры', 'employer': {'name': 'Example'},
+        'description': '<p>Администрирование Linux &amp; Windows</p>',
+        'salary_range': {'from': 150000, 'currency': 'RUR', 'gross': False},
+        'work_format': [{'name': 'Удалённо'}], 'experience': {'name': 'От 1 года до 3 лет'},
+        'work_schedule_by_days': [{'name': '5/2'}], 'working_hours': [{'name': '8 часов'}],
+    }
+    monkeypatch.setattr(manual_flow.hh_api, 'request', lambda account, path, **kw:
+                        vacancy if path.startswith('/vacancies/') else {})
+    cache = config / 'main' / '.vacancy-meta' / '139686676.json'
+
+    def post(vacancy_id, resume_id, letter):
+        assert json.loads(cache.read_text(encoding='utf-8'))['complete'] is True
+        return True, ''
+
+    monkeypatch.setattr(bot, 'hh_post_negotiation', post)
+    manual_flow.prepare(bot, '1', 'https://hh.ru/vacancy/139686676')
+    callback = menu.call_args.args[1]['rows'][0][0][1]
+    assert manual_flow.confirm(bot, '1', callback)
+    log = bot.get_active_tool_log()
+    state = {'pos_main': 0}
+    watcher.process_log('main', log, state)
+    watcher.process_log('main', log, state)
+
+    lookup.assert_not_called()
+    notification.assert_called_once()
+    message, buttons = notification.call_args.args
+    assert 'Инженер инфраструктуры — Example' in message
+    assert 'Зарплата: от 150 000 ₽ на руки' in message
+    assert 'Формат: Удалённо' in message
+    assert 'Опыт: От 1 года до 3 лет' in message
+    assert 'График: 5/2, 8 часов' in message
+    assert '<blockquote expandable>Администрирование Linux &amp; Windows</blockquote>' in message
+    assert ('👁 Отслеживать', 'track:139686676') in buttons
+
+
 def test_watcher_rotated_file_and_persisted_position(tmp_path,monkeypatch):
     import tg_watcher as w
     monkeypatch.setattr(w,'STATE_FILE',tmp_path/'state.json')
