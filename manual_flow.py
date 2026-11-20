@@ -9,6 +9,7 @@ from pathlib import Path
 import profiles_lib
 import mini_app_context
 from storage import file_lock
+from vacancy_metadata import save_vacancy_metadata
 from hh_api import HHAPIError
 import hh_api
 
@@ -100,6 +101,8 @@ def confirm(bot, chat_id, data):
                         break
                     letter = bot.render_letter(template, v, me)
                     if mode == 'ai': letter = generate_letter(profile, v)
+                    # The watcher can see the successful POST in the log immediately.
+                    save_vacancy_metadata(bot.CONFIG_DIR, profile['hh_account'], vid, old | v)
                     ok, err = bot.hh_post_negotiation(vid, profile['resume_id'], letter)
                     if not ok:
                         errors += 1; processed += 1
