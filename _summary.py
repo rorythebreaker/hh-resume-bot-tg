@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Шлёт в Telegram сводку прогона apply-vacancies, считая по log.txt активного профиля."""
+import html
+import json
 import os
 import re
 import sys
@@ -28,7 +30,7 @@ try:
     import profiles_lib
     pid, profile = profiles_lib.get_active_profile()
     if profile:
-        profile_display = __import__("html").escape(profile.get("display_name") or pid)
+        profile_display = html.escape(profile.get("display_name") or pid)
         hh_account = profile.get("hh_account", "main")
         candidate = CONFIG_DIR / hh_account / "log.txt"
         if candidate.exists():
@@ -101,9 +103,6 @@ if runner_sent:
 
 # Count processed candidates from the core's structured metrics, if available.
 # Do not claim zero attempts when the runner did not emit a counter.
-import json
-
-
 def read_metrics(marker):
     matches = re.findall(rf"^{marker}: (\{{[^\n]*\}})$", runner_out, re.MULTILINE)
     if not matches:
@@ -115,7 +114,44 @@ def read_metrics(marker):
 
 
 core = read_metrics("CORE_METRICS")
+if not runner_sent and type(core.get("sent")) is int:
+    sent = core["sent"]
 tried = core.get("found")
+skipped = core.get("skipped")
+if skipped is None:
+    exact_skipped = re.findall(r"^SKIPPED: (\d+)$", runner_out, re.MULTILINE)
+    if exact_skipped:
+        skipped = int(exact_skipped[-1])
+
+SKIP_REASON_LABELS = {
+    "geo_nonremote_outside_city": "Вне домашнего города, формат не только удалённый",
+    "geo_unknown_work_format": "Вне домашнего города, формат работы не указан",
+    "geo_unknown_area_or_format": "Не удалось определить город или формат работы",
+    "relations": "Уже есть статус на HH (например, отклик или отказ)",
+    "test": "Вакансии с тестовым заданием",
+    "archived": "Вакансии в архиве",
+    "redirect": "Отклик на внешнем сайте",
+    "other": "Прочие причины",
+}
+skip_lines = []
+reasons = core.get("skip_reasons")
+if isinstance(reasons, dict):
+    positive_reasons = [(key, count) for key, count in reasons.items()
+                        if type(count) is int and count > 0]
+    reason_lines = [
+        f"• {html.escape(SKIP_REASON_LABELS.get(key, key))}: {count}"
+        for key, count in sorted(positive_reasons, key=lambda item: (-item[1], item[0]))
+    ]
+    if type(skipped) is int:
+        without_reason = skipped - sum(count for _, count in positive_reasons)
+        if without_reason > 0:
+            reason_lines.append(f"• Причина не записана в лог: {without_reason}")
+    if reason_lines:
+        skip_lines.extend(["", "<b>Причины пропусков</b>", *reason_lines])
+pre_skipped = core.get("pre_skipped")
+if type(pre_skipped) is int and pre_skipped > 0:
+    skip_lines.extend(["", f"⏭ Из общего числа пропущены до основной обработки: {pre_skipped}"])
+
 discovery = read_metrics("DISCOVERY_METRICS")
 issue = discovery.get("issue") or {}
 discovery_lines = []
@@ -148,7 +184,10 @@ errors = sum(
 
 # Причина остановки и число проходов — их печатает run-apply.py в конце
 exact_errors = re.findall(r'^ERRORS: (\d+)', runner_out, re.MULTILINE)
-if exact_errors: errors = int(exact_errors[-1])
+if exact_errors:
+    errors = int(exact_errors[-1])
+elif type(core.get("errors")) is int:
+    errors = core["errors"]
 
 STOP_REASONS = {
     "captcha_timeout": ("⏳", "Ответ CAPTCHA не получен за три минуты. Отправленные отклики сохранены; откройте Mini App и запустите прогон снова."),
@@ -204,10 +243,12 @@ lines = [
 if profile_display:
     lines.append(f"👤 Профиль: <b>{profile_display}</b>")
 lines.extend([
-    f"📤 Отправлено: <b>{sent}</b>",
-    *discovery_lines,
     *([f"🔍 Обработано вакансий: {tried}"] if tried is not None else []),
+    f"📤 Отправлено: <b>{sent}</b>",
+    *([f"⏭ Пропущено: <b>{skipped}</b>"] if skipped is not None else []),
     f"🐛 Ошибок: {errors}",
+    *skip_lines,
+    *(["", *discovery_lines] if discovery_lines else []),
 ] + ([f"🔁 Проходов: {passes_done}"] if passes_done > 1 else []) + [
     f"Exit: {RC}",
     f"🕒 Сейчас: {datetime.now().strftime('%Y-%m-%d %H:%M')} МСК",
@@ -220,7 +261,6 @@ if status_line and stop_reason != "daily_limit":
     lines.append(status_line)
 
 if RC != 0 or errors:
-    import html
     from security import redact
     diagnostics = [line for line in log.splitlines() if not re.match(r'^(?:ERRORS|CORE_METRICS):', line) and re.search(r'ERROR|Exception|Traceback|\[E\]|403 POST|429 POST|[Cc]aptcha', line)]
     if diagnostics:
